@@ -1,0 +1,9 @@
+# Exact indicators (one per line)
+update-cdn.evil-domain.com
+185.220.101.7
+/tmp/.hidden/payload.sh
+login-portal.phish-example.net
+# Prefix rules: a trailing * means "anything that starts with this"
+c:\users\public\*
+/var/tmp/.cache/*
+203.0.113.*

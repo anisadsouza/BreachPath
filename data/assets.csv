@@ -1,0 +1,13 @@
+name,type,isolationCost
+WS-Alice,workstation,5
+WS-Bob,workstation,5
+WS-Carol,workstation,5
+VPN-GW,gateway,40
+WEB-01,server,25
+APP-01,server,30
+FILE-01,server,20
+AD-01,server,60
+JUMP-01,server,35
+DB-PROD,database,100
+CLOUD-ADMIN,cloud,100
+BACKUP-01,server,15

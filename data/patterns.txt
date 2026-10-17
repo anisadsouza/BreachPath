@@ -1,0 +1,6 @@
+# Hunting patterns. '.' = exactly one unknown character.
+p.wershell
+mimikat.
+ps.xec
+cert.til
+nc.t
