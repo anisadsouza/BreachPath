@@ -3,3 +3,7 @@ target/
 .idea/
 .vscode/
 *.class
+*.iml
+out/
+pom.xml.bak
+hs_err_pid*.log
