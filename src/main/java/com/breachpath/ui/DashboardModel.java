@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,7 @@ public final class DashboardModel {
     private IncidentIndex incidents;
     private Map<String, HostEvidence> evidence;
     private Set<String> reaching;
+    private Map<String, List<String>> patternHits = new LinkedHashMap<>();
     private final Map<String, Integer> incidentByHost = new HashMap<>();
     private final RiskScorer scorer = new RiskScorer();
 
@@ -123,9 +125,13 @@ public final class DashboardModel {
         PatternEngine patternEngine = new PatternEngine(
                 events.stream().map(SecurityEvent::command).filter(c -> !c.isEmpty()).toList());
         Set<String> matched = new HashSet<>();
+        Map<String, List<String>> hitsByPattern = new LinkedHashMap<>();
         for (String p : patternLines) {
-            matched.addAll(patternEngine.match(p));
+            List<String> hits = patternEngine.match(p);
+            hitsByPattern.put(p, hits);
+            matched.addAll(hits);
         }
+        this.patternHits = hitsByPattern;
         this.evidence = HostEvidence.collect(events, iocEngine, matched);
 
         Set<String> reach = new HashSet<>();
@@ -210,6 +216,17 @@ public final class DashboardModel {
 
     public List<List<Integer>> attackPaths() {
         return attackPaths;
+    }
+
+    /** Each wildcard hunting pattern with the observed commands it matched ('.' = one unknown character). */
+    public Map<String, List<String>> patternMatches() {
+        requireAnalysed();
+        return patternHits;
+    }
+
+    /** Known indicators (and prefix rules, shown with '*') that start with the typed prefix. */
+    public List<String> searchIoc(String prefix) {
+        return iocEngine.search(prefix == null ? "" : prefix.trim());
     }
 
     public boolean isBalanced() {
