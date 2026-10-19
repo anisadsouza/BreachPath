@@ -12,6 +12,7 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -32,9 +33,12 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
@@ -50,25 +54,39 @@ import javafx.stage.Stage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * JavaFX dashboard with four tabs: Overview, Investigation, Containment and Benchmarks.
  * Run with: mvn javafx:run
  */
 public final class DashboardApp extends Application {
-    private static final double NODE_R = 24;
-    private static final String RED = "#c62828";
-    private static final String ORANGE = "#ef6c00";
-    private static final String YELLOW = "#fbc02d";
-    private static final String GREEN = "#2e7d32";
-    private static final String BLUE = "#0d47a1";
-    private static final String GREY = "#546e7a";
+    private static final double NODE_R = 22;
+
+    // Colour is reserved for risk. Everything else is grey or ink.
+    private static final String INK = "#20242a";
+    private static final String MUTED = "#5d6671";
+    private static final String RULE = "#cfd5dc";
+    private static final String TARGET = "#0b4f6c";
+    private static final String OK = "#2a6f4e";
+    private static final String SEV_LOW = "#aab5c1";
+    private static final String SEV_MED = "#e2a93b";
+    private static final String SEV_HIGH = "#cf5c2a";
+    private static final String SEV_CRIT = "#a3202a";
+
+    // Typefaces are picked from what is installed, with sensible fallbacks.
+    private static String bodyFont = "System";
+    private static String numberFont = "System";
+    private static String monoFont = "Monospaced";
 
     private DashboardModel model;
     private String selectedHost;
@@ -83,17 +101,17 @@ public final class DashboardApp extends Application {
 
     // overview
     private final GraphView overviewGraph = new GraphView(false);
-    private final VBox cardsBox = new VBox(8);
-    private final Label selectionSummary = new Label();
+    private final VBox triageList = new VBox();
     private final CategoryAxis hourAxis = new CategoryAxis();
     private final NumberAxis countAxis = new NumberAxis();
     private final BarChart<String, Number> chart = new BarChart<>(hourAxis, countAxis);
 
     // investigation
     private final TableView<Incident> table = new TableView<>();
-    private final TextArea reasonsArea = new TextArea();
+    private final VBox explainBox = new VBox(8);
     private final TextArea patternsArea = new TextArea();
     private final TextField iocField = new TextField();
+    private final Label iocCount = new Label();
     private final ListView<String> iocResults = new ListView<>();
     private final Spinner<Integer> hourSpinner = new Spinner<>(0, 23, 12);
     private final Spinner<Integer> deltaSpinner = new Spinner<>(1, 500, 30);
@@ -102,16 +120,18 @@ public final class DashboardApp extends Application {
     private final GraphView containmentGraph = new GraphView(true);
     private final ToggleButton scenarioA = new ToggleButton();
     private final ToggleButton scenarioB = new ToggleButton();
-    private final VBox planBox = new VBox(8);
+    private final VBox planBox = new VBox(10);
 
     // benchmarks
-    private final TextArea benchArea = new TextArea();
     private final Label validationLabel = new Label();
     private final Button benchButton = new Button("Run benchmarks");
     private final ProgressIndicator benchProgress = new ProgressIndicator();
+    private final VBox summaryBox = new VBox();
+    private final TextArea benchArea = new TextArea();
 
     @Override
     public void start(Stage stage) {
+        chooseFonts();
         String dir = getParameters().getNamed().getOrDefault("data", "data");
         try {
             model = DashboardModel.load(Path.of(dir));
@@ -131,14 +151,36 @@ public final class DashboardApp extends Application {
         BorderPane root = new BorderPane();
         root.setTop(buildTopBar());
         root.setCenter(tabs);
+        root.setStyle("-fx-font-family: '" + bodyFont + "'; -fx-font-size: 13px;");
 
+        Scene scene = new Scene(root, 1280, 840);
+        URL css = DashboardApp.class.getResource("/breachpath.css");
+        if (css != null) {
+            scene.getStylesheets().add(css.toExternalForm());
+        }
         stage.setTitle("BreachPath - Enterprise Breach Analysis & Containment");
-        stage.setScene(new Scene(root, 1280, 820));
+        stage.setScene(scene);
         stage.show();
         runAnalysis();
     }
 
-    private static Tab tab(String title, javafx.scene.Node content) {
+    private static void chooseFonts() {
+        Set<String> have = new HashSet<>(Font.getFamilies());
+        bodyFont = firstInstalled(have, "Avenir Next", "Segoe UI", "Helvetica Neue", "DejaVu Sans", "System");
+        numberFont = firstInstalled(have, "Avenir Next Condensed", "Bahnschrift", "Arial Narrow", bodyFont);
+        monoFont = firstInstalled(have, "Menlo", "Consolas", "DejaVu Sans Mono", "Monospaced");
+    }
+
+    private static String firstInstalled(Set<String> have, String... names) {
+        for (String n : names) {
+            if (have.contains(n)) {
+                return n;
+            }
+        }
+        return names[names.length - 1];
+    }
+
+    private static Tab tab(String title, Node content) {
         Tab t = new Tab(title, content);
         t.setClosable(false);
         return t;
@@ -148,23 +190,22 @@ public final class DashboardApp extends Application {
 
     private VBox buildTopBar() {
         Label title = new Label("BreachPath");
-        title.setFont(Font.font(null, FontWeight.BOLD, 20));
-        Label subtitle = new Label("Enterprise Breach Analysis & Containment");
-        subtitle.setTextFill(Color.web(GREY));
-        HBox titles = new HBox(12, title, subtitle);
+        font(title, numberFont, FontWeight.BOLD, 26);
+        Label subtitle = muted("Breach analysis and containment for a simulated enterprise network");
+        HBox titles = new HBox(14, title, subtitle);
         titles.setAlignment(Pos.BASELINE_LEFT);
 
         fromSpinner.setEditable(true);
         toSpinner.setEditable(true);
-        fromSpinner.setPrefWidth(72);
-        toSpinner.setPrefWidth(72);
+        fromSpinner.setPrefWidth(74);
+        toSpinner.setPrefWidth(74);
         compromisedField.setPrefWidth(180);
         compromisedField.setPromptText("WS-Alice,WS-Bob");
         targetField.setPrefWidth(180);
         targetField.setPromptText("DB-PROD,CLOUD-ADMIN");
         Button run = new Button("Analyse");
+        run.getStyleClass().add("primary");
         run.setDefaultButton(true);
-        run.setStyle("-fx-base: #1565c0; -fx-text-fill: white; -fx-font-weight: bold;");
         run.setOnAction(e -> runAnalysis());
         status.setWrapText(true);
         HBox.setHgrow(status, Priority.ALWAYS);
@@ -173,8 +214,8 @@ public final class DashboardApp extends Application {
                 targetField, new Label("Hours"), fromSpinner, new Label("to"), toSpinner, run, status);
         controls.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = new VBox(8, titles, controls);
-        box.setPadding(new Insets(10, 14, 8, 14));
+        VBox box = new VBox(10, titles, controls);
+        box.setPadding(new Insets(12, 16, 8, 16));
         return box;
     }
 
@@ -183,30 +224,24 @@ public final class DashboardApp extends Application {
     private BorderPane buildOverview() {
         chart.setAnimated(false);
         chart.setLegendVisible(false);
-        chart.setCategoryGap(2);
+        chart.setCategoryGap(3);
         hourAxis.setLabel("hour of day");
         countAxis.setLabel("alerts");
-        chart.setPrefHeight(215);
+        chart.setPrefHeight(210);
 
-        selectionSummary.setFont(Font.font(null, FontWeight.BOLD, 13));
-        selectionSummary.setWrapText(true);
-
-        Label cardsTitle = sectionTitle("Highest-risk incidents");
-        Label hint = new Label("Click a card or a host on the map to see its alert activity.");
-        hint.setWrapText(true);
-        hint.setMinHeight(Region.USE_PREF_SIZE);
-        hint.setTextFill(Color.web(GREY));
-        VBox right = new VBox(10, cardsTitle, cardsBox, hint, selectionSummary);
-        right.setPadding(new Insets(12));
-        right.setPrefWidth(340);
-
-        Label mapTitle = sectionTitle("Network attack path");
-        VBox left = new VBox(6, mapTitle, overviewGraph.holder, legend(false));
-        left.setPadding(new Insets(12, 0, 6, 12));
+        VBox left = new VBox(8, heading("Network map"), overviewGraph.holder, legend(false));
+        left.setPadding(new Insets(14, 8, 6, 16));
         VBox.setVgrow(overviewGraph.holder, Priority.ALWAYS);
 
+        Label hint = muted("Click a row or a host on the map to see its alert history below.");
+        hint.setWrapText(true);
+        hint.setMinHeight(Region.USE_PREF_SIZE);
+        VBox right = new VBox(8, heading("Incidents by risk"), triageList, hint);
+        right.setPadding(new Insets(14, 16, 6, 8));
+        right.setPrefWidth(360);
+
         VBox bottom = new VBox(chart);
-        bottom.setPadding(new Insets(0, 12, 8, 12));
+        bottom.setPadding(new Insets(0, 16, 8, 16));
 
         BorderPane pane = new BorderPane();
         pane.setCenter(left);
@@ -217,7 +252,7 @@ public final class DashboardApp extends Application {
 
     // ---- tab 2: investigation ---------------------------------------------------------------
 
-    private TwoColumns buildInvestigation() {
+    private BorderPane buildInvestigation() {
         TableColumn<Incident, Integer> idCol = new TableColumn<>("Id");
         idCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(c.getValue().id()));
         idCol.setMinWidth(45);
@@ -233,7 +268,7 @@ public final class DashboardApp extends Application {
         levelCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(level(c.getValue().riskScore())));
         levelCol.setMinWidth(80);
         levelCol.setMaxWidth(100);
-        TableColumn<Incident, String> whyCol = new TableColumn<>("Top reason");
+        TableColumn<Incident, String> whyCol = new TableColumn<>("Largest factor");
         whyCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(
                 c.getValue().reasons().isEmpty() ? "" : c.getValue().reasons().get(0)));
         whyCol.setPrefWidth(260);
@@ -243,68 +278,62 @@ public final class DashboardApp extends Application {
         table.getColumns().add(levelCol);
         table.getColumns().add(whyCol);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setPrefHeight(236);
         table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
             if (!updatingSelection && b != null) {
                 selectHost(b.host());
             }
         });
 
-        reasonsArea.setEditable(false);
-        reasonsArea.setWrapText(true);
-        reasonsArea.setPrefRowCount(7);
+        ScrollPane explainScroll = new ScrollPane(explainBox);
+        explainScroll.setFitToWidth(true);
+        explainScroll.setPrefHeight(262);
+        explainBox.setPadding(new Insets(12, 14, 12, 14));
+        explainScroll.setStyle("-fx-background-color: #ffffff; -fx-border-color: " + RULE + ";");
+        explainBox.setStyle("-fx-background-color: #ffffff;");
 
         hourSpinner.setEditable(true);
         deltaSpinner.setEditable(true);
-        hourSpinner.setPrefWidth(75);
-        deltaSpinner.setPrefWidth(85);
+        hourSpinner.setPrefWidth(76);
+        deltaSpinner.setPrefWidth(86);
         Button add = new Button("Add evidence");
         add.setOnAction(e -> addEvidence());
-        Label hourLabel = new Label("Hour");
-        Label alertsLabel = new Label("Extra alerts");
-        HBox evidence = new HBox(8, hourLabel, hourSpinner, alertsLabel, deltaSpinner, add);
+        HBox evidence = new HBox(10, new Label("Hour"), hourSpinner, new Label("Extra alerts"), deltaSpinner, add);
         evidence.setAlignment(Pos.CENTER_LEFT);
+        Label evidenceNote = muted("Re-scores the selected host and moves its incident in the red-black tree.");
+        evidenceNote.setWrapText(true);
+        evidenceNote.setMinHeight(Region.USE_PREF_SIZE);
 
-        Label note = new Label("Adding alerts re-scores the host and moves its incident in the red-black tree.");
-        note.setWrapText(true);
-        note.setTextFill(Color.web(GREY));
-        note.setMinHeight(Region.USE_PREF_SIZE);
-
-        VBox left = new VBox(8, sectionTitle("All incidents (highest risk first)"), table,
-                sectionTitle("Why this score"), reasonsArea,
-                sectionTitle("Simulate new evidence for the selected host"), evidence, note);
-        left.setPadding(new Insets(12));
-        VBox.setVgrow(table, Priority.ALWAYS);
+        VBox left = new VBox(14, heading("All incidents"), table, heading("Why this score"), explainScroll,
+                heading("Simulate new evidence for the selected host"), new VBox(6, evidence, evidenceNote));
+        left.setPadding(new Insets(16, 10, 16, 18));
+        VBox.setVgrow(explainScroll, Priority.NEVER);
 
         patternsArea.setEditable(false);
-        patternsArea.setFont(Font.font("Monospaced", 12));
-        patternsArea.setPrefRowCount(8);
-        Label patternHelp = new Label("A '.' stands for exactly one unknown character, e.g. p.wershell finds powershell.");
+        font(patternsArea, monoFont, FontWeight.NORMAL, 12);
+        patternsArea.setPrefRowCount(5);
+        patternsArea.setWrapText(false);
+        Label patternHelp = muted("A dot stands for exactly one unknown character.");
         patternHelp.setWrapText(true);
-        patternHelp.setTextFill(Color.web(GREY));
         patternHelp.setMinHeight(Region.USE_PREF_SIZE);
 
-        iocField.setPromptText("type the start of an indicator, e.g. update or 203.0");
+        iocField.setPromptText("Start of an indicator, e.g. update or 203.0");
         iocField.textProperty().addListener((o, a, b) -> updateIocResults());
-        Label iocHelp = new Label("Searches the known-indicator trie by prefix. A trailing * marks a prefix rule.");
-        iocHelp.setWrapText(true);
-        iocHelp.setTextFill(Color.web(GREY));
-        iocHelp.setMinHeight(Region.USE_PREF_SIZE);
+        iocResults.setFixedCellSize(28);
+        iocResults.setPrefHeight(150);
+        iocResults.setMaxHeight(150);
+        iocCount.setTextFill(Color.web(MUTED));
 
-        VBox right = new VBox(8, sectionTitle("Suspicious command patterns (wildcard hunting)"), patternHelp,
-                patternsArea, sectionTitle("Indicator search (prefix trie)"), iocHelp, iocField, iocResults);
-        right.setPadding(new Insets(12));
-        VBox.setVgrow(iocResults, Priority.ALWAYS);
-        right.setPrefWidth(480);
+        VBox right = new VBox(14,
+                heading("Wildcard command patterns"), new VBox(6, patternHelp, patternsArea),
+                heading("Indicator search"), new VBox(6, iocField, iocResults, iocCount));
+        right.setPadding(new Insets(16, 18, 16, 10));
+        right.setPrefWidth(440);
 
-        return new TwoColumns(left, right);
-    }
-
-    /** Simple two-column layout (left grows, right has a fixed width). */
-    private static final class TwoColumns extends BorderPane {
-        TwoColumns(Region left, Region right) {
-            setCenter(left);
-            setRight(right);
-        }
+        BorderPane pane = new BorderPane();
+        pane.setCenter(left);
+        pane.setRight(right);
+        return pane;
     }
 
     // ---- tab 3: containment -----------------------------------------------------------------
@@ -313,36 +342,34 @@ public final class DashboardApp extends Application {
         ToggleGroup group = new ToggleGroup();
         for (ToggleButton b : new ToggleButton[]{scenarioA, scenarioB}) {
             b.setToggleGroup(group);
-            b.setMinWidth(300);
+            b.getStyleClass().add("scenario");
+            b.setMinWidth(330);
             b.setAlignment(Pos.CENTER_LEFT);
-            b.setStyle("-fx-font-size: 13px;");
         }
         scenarioA.setSelected(true);
         scenarioA.setOnAction(e -> chooseScenario(DashboardModel.Scenario.STRICT));
         scenarioB.setOnAction(e -> chooseScenario(DashboardModel.Scenario.RELAXED));
-        // keep one button always selected
         group.selectedToggleProperty().addListener((o, old, now) -> {
             if (now == null && old != null) {
                 old.setSelected(true);
             }
         });
 
-        Label help = new Label("Pick a scenario to see which links to block or hosts to isolate "
-                + "(found with max flow / min cut).");
-        help.setTextFill(Color.web(GREY));
-        HBox choices = new HBox(12, scenarioA, scenarioB);
-        VBox top = new VBox(8, help, choices);
-        top.setPadding(new Insets(12, 12, 4, 12));
+        HBox choices = new HBox(14, scenarioA, scenarioB);
+        choices.setMaxHeight(Region.USE_PREF_SIZE);
+        scenarioA.setMaxHeight(Region.USE_PREF_SIZE);
+        scenarioB.setMaxHeight(Region.USE_PREF_SIZE);
+        VBox top = new VBox(8, heading("Compare containment options"), choices);
+        top.setPadding(new Insets(14, 16, 4, 16));
 
-        VBox left = new VBox(6, containmentGraph.holder, legend(true));
-        left.setPadding(new Insets(6, 0, 6, 12));
+        VBox left = new VBox(8, containmentGraph.holder, legend(true));
+        left.setPadding(new Insets(6, 8, 6, 16));
         VBox.setVgrow(containmentGraph.holder, Priority.ALWAYS);
 
-        planBox.setPadding(new Insets(12));
-        planBox.setPrefWidth(380);
+        planBox.setPadding(new Insets(6, 16, 16, 8));
         ScrollPane scroll = new ScrollPane(planBox);
         scroll.setFitToWidth(true);
-        scroll.setPrefWidth(400);
+        scroll.setPrefWidth(380);
 
         BorderPane pane = new BorderPane();
         pane.setTop(top);
@@ -354,36 +381,44 @@ public final class DashboardApp extends Application {
     // ---- tab 4: benchmarks ------------------------------------------------------------------
 
     private BorderPane buildBenchmarks() {
-        benchArea.setEditable(false);
-        benchArea.setFont(Font.font("Monospaced", 12));
-        benchArea.setText("Press \"Run benchmarks\" to compare:\n"
-                + "  - Edmonds-Karp and Ford-Fulkerson against a brute-force minimum cut\n"
-                + "  - prefix trie, wildcard dictionary and segment tree against plain scans\n"
-                + "  - red-black tree against java.util.TreeMap\n\n"
-                + "It uses generated (synthetic) data and takes a few seconds.");
+        validationLabel.setWrapText(true);
+        validationLabel.setMinHeight(Region.USE_PREF_SIZE);
+
         benchProgress.setVisible(false);
-        benchProgress.setPrefSize(24, 24);
+        benchProgress.setPrefSize(22, 22);
+        benchButton.getStyleClass().add("primary");
         benchButton.setOnAction(e -> runBenchmarks());
-        HBox bar = new HBox(10, benchButton, benchProgress);
+        Label note = muted("Generated data, one run per size. Times change a little from run to run.");
+        HBox bar = new HBox(12, benchButton, benchProgress, note);
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        validationLabel.setWrapText(true);
-        VBox top = new VBox(8, sectionTitle("Quick check on the current network"), validationLabel, bar);
-        top.setPadding(new Insets(12));
+        summaryBox.getChildren().add(muted("Press \"Run benchmarks\". It takes a few seconds."));
+
+        benchArea.setEditable(false);
+        font(benchArea, monoFont, FontWeight.NORMAL, 12);
+        benchArea.setPrefRowCount(16);
+        TitledPane details = new TitledPane("Detailed timings", benchArea);
+        details.setExpanded(false);
+        details.setAnimated(false);
+
+        VBox content = new VBox(18,
+                new VBox(6, heading("Containment check on your network"), validationLabel),
+                new VBox(8, heading("The five concepts"), bar, summaryBox),
+                details);
+        content.setPadding(new Insets(16, 18, 16, 18));
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setFitToWidth(true);
 
         BorderPane pane = new BorderPane();
-        pane.setTop(top);
-        BorderPane.setMargin(benchArea, new Insets(0, 12, 12, 12));
-        pane.setCenter(benchArea);
+        pane.setCenter(scroll);
         return pane;
     }
 
     private void runBenchmarks() {
         benchButton.setDisable(true);
         benchProgress.setVisible(true);
-        benchArea.setText("Running benchmarks...");
+        summaryBox.getChildren().setAll(muted("Running..."));
         Thread t = new Thread(() -> {
-            String text;
             PrintStream old = System.out;
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             synchronized (DashboardApp.class) {
@@ -396,15 +431,71 @@ public final class DashboardApp extends Application {
                     System.setOut(old);
                 }
             }
-            text = buf.toString(StandardCharsets.UTF_8).trim();
+            String text = buf.toString(StandardCharsets.UTF_8).trim();
             Platform.runLater(() -> {
-                benchArea.setText(text);
+                showBenchmarks(text);
                 benchButton.setDisable(false);
                 benchProgress.setVisible(false);
             });
         }, "benchmarks");
         t.setDaemon(true);
         t.start();
+    }
+
+    private void showBenchmarks(String text) {
+        benchArea.setText(BenchmarkSummary.detailForDisplay(text));
+        GridPane grid = new GridPane();
+        ColumnConstraints c1 = new ColumnConstraints(170);
+        ColumnConstraints c2 = new ColumnConstraints();
+        c2.setHgrow(Priority.ALWAYS);
+        ColumnConstraints c3 = new ColumnConstraints(86);
+        ColumnConstraints c4 = new ColumnConstraints();
+        c4.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(c1, c2, c3, c4);
+        String[] heads = {"Concept", "Correctness check", "Result", "Performance"};
+        for (int c = 0; c < heads.length; c++) {
+            Label h = cell(heads[c], true, "#eef1f4");
+            grid.add(h, c, 0);
+        }
+        int r = 1;
+        for (BenchmarkSummary.Row row : BenchmarkSummary.parse(text)) {
+            VBox concept = new VBox(2, new Label(row.concept()));
+            font(((Label) concept.getChildren().get(0)), bodyFont, FontWeight.BOLD, 13);
+            if (!row.workload().isEmpty()) {
+                Label w = muted(row.workload());
+                w.setWrapText(true);
+                font(w, bodyFont, FontWeight.NORMAL, 11);
+                concept.getChildren().add(w);
+            }
+            concept.setStyle(cellStyle("#fbfcfd"));
+            grid.add(concept, 0, r);
+            grid.add(cell(row.check(), false, "#fbfcfd"), 1, r);
+            Label result = cell(row.passed() ? "Pass" : "Fail", true, "#fbfcfd");
+            result.setTextFill(Color.web(row.passed() ? OK : SEV_CRIT));
+            grid.add(result, 2, r);
+            grid.add(cell(row.performance(), false, "#fbfcfd"), 3, r);
+            r++;
+        }
+        grid.setStyle("-fx-border-color: " + RULE + ";");
+        summaryBox.getChildren().setAll(grid);
+    }
+
+    private Label cell(String text, boolean bold, String fill) {
+        Label l = new Label(text);
+        l.setWrapText(true);
+        l.setMaxWidth(Double.MAX_VALUE);
+        l.setMaxHeight(Double.MAX_VALUE);
+        l.setMinHeight(Region.USE_PREF_SIZE);
+        font(l, bodyFont, bold ? FontWeight.BOLD : FontWeight.NORMAL, 13);
+        l.setStyle(l.getStyle() + cellStyle(fill));
+        GridPane.setFillWidth(l, true);
+        GridPane.setFillHeight(l, true);
+        return l;
+    }
+
+    private static String cellStyle(String fill) {
+        return "-fx-background-color: " + fill + "; -fx-padding: 10 12 10 12; "
+                + "-fx-border-color: transparent transparent " + RULE + " transparent;";
     }
 
     // ---- actions ----------------------------------------------------------------------------
@@ -428,7 +519,7 @@ public final class DashboardApp extends Application {
         try {
             Incident before = model.incidentFor(selectedHost);
             Incident after = model.addEvidence(selectedHost, hourSpinner.getValue(), deltaSpinner.getValue());
-            setStatus(String.format("%s: risk %d -> %d (tree balanced: %s)", selectedHost,
+            setStatus(String.format("%s: risk %d to %d (tree balanced: %s)", selectedHost,
                     before == null ? 0 : before.riskScore(), after.riskScore(), model.isBalanced()), true);
             refreshAll(selectedHost);
         } catch (IllegalArgumentException ex) {
@@ -443,7 +534,7 @@ public final class DashboardApp extends Application {
     }
 
     private void setStatus(String text, boolean ok) {
-        status.setStyle("-fx-text-fill: " + (ok ? GREEN : RED) + ";");
+        status.setStyle("-fx-text-fill: " + (ok ? OK : SEV_CRIT) + ";");
         status.setText(text);
     }
 
@@ -460,38 +551,52 @@ public final class DashboardApp extends Application {
         }
         selectedHost = found ? host : (ranked.isEmpty() ? null : ranked.get(0).host());
 
-        // investigation: patterns + indicator search
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, List<String>> e : model.patternMatches().entrySet()) {
-            sb.append(String.format("%-14s ->  %s%n", e.getKey(),
-                    e.getValue().isEmpty() ? "(no match)" : String.join(", ", e.getValue())));
+            sb.append(String.format("%-13s %s%n", e.getKey(),
+                    e.getValue().isEmpty() ? "no match" : String.join(", ", e.getValue())));
         }
         patternsArea.setText(sb.toString());
         updateIocResults();
 
-        // containment: scenario buttons and plan
         ContainmentPlan a = model.plan(DashboardModel.Scenario.STRICT, false);
         ContainmentPlan b = model.plan(DashboardModel.Scenario.RELAXED, false);
-        scenarioA.setText("Scenario A  -  " + costText(a) + "\nKeep compromised hosts online, cut the network downstream");
-        scenarioB.setText("Scenario B  -  " + costText(b) + "\nAllow isolating the compromised host itself");
+        fillScenarioCard(scenarioA, "Scenario A", a, "Compromised hosts stay online");
+        fillScenarioCard(scenarioB, "Scenario B", b, "The compromised host itself may be isolated");
         DashboardModel.Scenario shown = scenarioB.isSelected()
                 ? DashboardModel.Scenario.RELAXED : DashboardModel.Scenario.STRICT;
         containmentGraph.scenario = shown;
         fillPlan(shown);
 
-        // benchmarks: quick validation
-        ContainmentPlan aFf = model.plan(DashboardModel.Scenario.STRICT, true);
-        ContainmentPlan bFf = model.plan(DashboardModel.Scenario.RELAXED, true);
-        boolean agree = a.totalCost() == aFf.totalCost() && b.totalCost() == bFf.totalCost();
-        validationLabel.setText("Edmonds-Karp and Ford-Fulkerson find the same minimum cost on this network: "
-                + (agree ? "yes" : "NO - investigate")
-                + "   (Scenario A " + costText(a) + ", Scenario B " + costText(b) + ")");
+        validationLabel.setText("Scenario A: " + verifiedText(a) + "\nScenario B: " + verifiedText(b));
 
         refreshSelectionViews();
     }
 
-    private static String costText(ContainmentPlan p) {
-        return p.feasible() ? "cost " + p.totalCost() : "no finite cost";
+    private static String verifiedText(ContainmentPlan p) {
+        if (!p.feasible()) {
+            return "no finite-cost cut exists, because an uncuttable path reaches a target.";
+        }
+        return p.verified()
+                ? "cost " + p.totalCost() + ". After the cut, no protected target can be reached (checked)."
+                : "cost " + p.totalCost() + ". A target is still reachable after the cut.";
+    }
+
+    private void fillScenarioCard(ToggleButton card, String name, ContainmentPlan p, String rule) {
+        Label title = new Label(name);
+        font(title, bodyFont, FontWeight.BOLD, 14);
+        Label cost = new Label(p.feasible() ? "Cost " + p.totalCost() : "No finite cost");
+        font(cost, numberFont, FontWeight.BOLD, 26);
+        String what = p.feasible()
+                ? p.actions().size() + (p.actions().size() == 1 ? " action" : " actions") + ", "
+                + p.affectedAssets().size() + (p.affectedAssets().size() == 1 ? " asset" : " assets") + " affected"
+                : "";
+        VBox box = new VBox(2, title, cost, muted(rule));
+        if (!what.isEmpty()) {
+            box.getChildren().add(muted(what));
+        }
+        card.setGraphic(box);
+        card.setText(null);
     }
 
     private void selectHost(String host) {
@@ -503,7 +608,6 @@ public final class DashboardApp extends Application {
     }
 
     private void refreshSelectionViews() {
-        // table row
         updatingSelection = true;
         for (Incident i : table.getItems()) {
             if (i.host().equals(selectedHost)) {
@@ -514,64 +618,109 @@ public final class DashboardApp extends Application {
 
         Incident sel = selectedHost == null ? null : model.incidentFor(selectedHost);
         if (sel == null) {
-            reasonsArea.clear();
+            explainBox.getChildren().clear();
             chart.getData().clear();
             chart.setTitle("");
-            selectionSummary.setText("");
         } else {
-            StringBuilder sb = new StringBuilder();
-            sb.append(sel.host()).append("  |  risk ").append(sel.riskScore())
-                    .append("  (").append(level(sel.riskScore())).append(")\n");
-            for (String r : sel.reasons()) {
-                sb.append(" - ").append(r).append("\n");
-            }
-            reasonsArea.setText(sb.toString());
-            selectionSummary.setText(sel.host() + ": risk " + sel.riskScore() + " (" + level(sel.riskScore()) + ")");
+            fillExplanation(sel);
             updateChart(sel.host());
         }
-        rebuildCards();
+        rebuildTriage();
         overviewGraph.redraw();
         containmentGraph.redraw();
     }
 
     private void updateIocResults() {
-        iocResults.setItems(FXCollections.observableArrayList(model.searchIoc(iocField.getText())));
+        List<String> found = model.searchIoc(iocField.getText());
+        iocResults.setItems(FXCollections.observableArrayList(found));
+        iocCount.setText(found.size() + (found.size() == 1 ? " indicator" : " indicators"));
+    }
+
+    // ---- explanation of one incident --------------------------------------------------------
+
+    private static final Pattern POINTS = Pattern.compile("^(.*?)\\s*\\(\\+(\\d+)\\)\\s*$");
+
+    private void fillExplanation(Incident inc) {
+        explainBox.getChildren().clear();
+        Label host = new Label(inc.host());
+        font(host, numberFont, FontWeight.BOLD, 22);
+        Label score = new Label(inc.riskScore() + " of 100");
+        font(score, numberFont, FontWeight.BOLD, 22);
+        score.setTextFill(Color.web(levelColor(inc.riskScore())));
+        Label lvl = muted(level(inc.riskScore()) + " priority");
+        HBox head = new HBox(12, host, score, lvl);
+        head.setAlignment(Pos.BASELINE_LEFT);
+        explainBox.getChildren().add(head);
+
+        int sum = 0;
+        for (String reason : inc.reasons()) {
+            Matcher m = POINTS.matcher(reason);
+            Label pts;
+            String text;
+            if (m.matches()) {
+                int p = Integer.parseInt(m.group(2));
+                sum += p;
+                pts = new Label("+" + p);
+                text = m.group(1);
+            } else {
+                pts = new Label("note");
+                pts.setTextFill(Color.web(MUTED));
+                text = reason;
+            }
+            font(pts, numberFont, FontWeight.BOLD, 16);
+            pts.setMinWidth(46);
+            Label body = new Label(text);
+            body.setWrapText(true);
+            body.setMinHeight(Region.USE_PREF_SIZE);
+            HBox row = new HBox(10, pts, body);
+            row.setAlignment(Pos.BASELINE_LEFT);
+            row.setPadding(new Insets(3, 0, 3, 0));
+            row.setStyle("-fx-border-color: transparent transparent #e3e7ec transparent;");
+            explainBox.getChildren().add(row);
+        }
+        String total = sum > inc.riskScore()
+                ? "Factors add up to " + sum + "; the score is capped at " + inc.riskScore() + "."
+                : "Factors add up to " + sum + ".";
+        explainBox.getChildren().add(muted(total));
     }
 
     // ---- overview widgets -------------------------------------------------------------------
 
-    private void rebuildCards() {
-        cardsBox.getChildren().clear();
+    private void rebuildTriage() {
+        triageList.getChildren().clear();
         List<Incident> ranked = model.ranked();
-        for (int i = 0; i < Math.min(5, ranked.size()); i++) {
-            cardsBox.getChildren().add(card(ranked.get(i)));
+        for (int i = 0; i < Math.min(6, ranked.size()); i++) {
+            triageList.getChildren().add(triageRow(ranked.get(i)));
         }
     }
 
-    private HBox card(Incident inc) {
-        Label badge = new Label(String.valueOf(inc.riskScore()));
-        badge.setMinSize(46, 46);
-        badge.setAlignment(Pos.CENTER);
-        badge.setStyle("-fx-background-radius: 23; -fx-text-fill: " + textOn(inc.riskScore())
-                + "; -fx-font-weight: bold; -fx-font-size: 15px; -fx-background-color: " + levelColor(inc.riskScore()) + ";");
+    private HBox triageRow(Incident inc) {
+        Region strip = new Region();
+        strip.setMinWidth(5);
+        strip.setMaxWidth(5);
+        strip.setStyle("-fx-background-color: " + levelColor(inc.riskScore()) + ";");
+        Label score = new Label(String.valueOf(inc.riskScore()));
+        font(score, numberFont, FontWeight.BOLD, 28);
+        score.setMinWidth(54);
         Label host = new Label(inc.host());
-        host.setFont(Font.font(null, FontWeight.BOLD, 14));
-        Label lvl = new Label(level(inc.riskScore()) + " priority");
-        lvl.setTextFill(Color.web(levelColor(inc.riskScore())));
-        Label why = new Label(inc.reasons().isEmpty() ? "" : inc.reasons().get(0));
-        why.setTextFill(Color.web(GREY));
-        why.setWrapText(true);
-        VBox text = new VBox(2, host, lvl, why);
+        font(host, bodyFont, FontWeight.BOLD, 14);
+        Label lvl = muted(level(inc.riskScore()));
+        HBox first = new HBox(8, host, lvl);
+        first.setAlignment(Pos.BASELINE_LEFT);
+        Label why = muted(inc.reasons().isEmpty() ? "" : inc.reasons().get(0));
+        why.setMaxWidth(250);
+        VBox text = new VBox(1, first, why);
         HBox.setHgrow(text, Priority.ALWAYS);
-        HBox box = new HBox(10, badge, text);
-        box.setAlignment(Pos.CENTER_LEFT);
-        box.setPadding(new Insets(8));
-        boolean sel = inc.host().equals(selectedHost);
-        box.setStyle("-fx-background-color: " + (sel ? "#e3f2fd" : "#fafafa") + "; -fx-border-color: "
-                + (sel ? "#1565c0" : "#cfd8dc") + "; -fx-border-radius: 6; -fx-background-radius: 6;");
-        box.setCursor(Cursor.HAND);
-        box.setOnMouseClicked(e -> selectHost(inc.host()));
-        return box;
+        HBox row = new HBox(10, strip, score, text);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.setPadding(new Insets(7, 6, 7, 0));
+        row.getStyleClass().add("triage-row");
+        if (inc.host().equals(selectedHost)) {
+            row.getStyleClass().add("selected");
+        }
+        row.setCursor(Cursor.HAND);
+        row.setOnMouseClicked(e -> selectHost(inc.host()));
+        return row;
     }
 
     private void updateChart(String host) {
@@ -583,14 +732,14 @@ public final class DashboardApp extends Application {
             boolean inWindow = h >= model.from() && h <= model.to();
             d.nodeProperty().addListener((o, old, node) -> {
                 if (node != null) {
-                    node.setStyle("-fx-bar-fill: " + (inWindow ? "#d84315" : "#b0bec5") + ";");
+                    node.setStyle("-fx-bar-fill: " + (inWindow ? INK : "#c3ccd5") + ";");
                 }
             });
             series.getData().add(d);
         }
         chart.getData().add(series);
-        chart.setTitle(String.format("%s: alerts per hour (hours %d-%d: total %d, peak %d)", host,
-                model.from(), model.to(), model.windowTotal(host), model.windowPeak(host)));
+        chart.setTitle(String.format("%s: %d alerts in hours %d to %d, at most %d in one hour",
+                host, model.windowTotal(host), model.from(), model.to(), model.windowPeak(host)));
     }
 
     // ---- containment widgets ----------------------------------------------------------------
@@ -598,50 +747,81 @@ public final class DashboardApp extends Application {
     private void fillPlan(DashboardModel.Scenario s) {
         planBox.getChildren().clear();
         ContainmentPlan ek = model.plan(s, false);
-        ContainmentPlan ff = model.plan(s, true);
         String name = s == DashboardModel.Scenario.STRICT ? "Scenario A" : "Scenario B";
-        planBox.getChildren().add(sectionTitle(name + " - recommended actions"));
+        planBox.getChildren().add(heading(name + ": what to do"));
         if (!ek.feasible()) {
-            Label none = new Label("No finite-cost containment exists: an uncuttable path reaches a target.");
+            Label none = new Label("No finite-cost containment exists. An uncuttable path reaches a target.");
             none.setWrapText(true);
-            none.setTextFill(Color.web(RED));
+            none.setMinHeight(Region.USE_PREF_SIZE);
+            none.setTextFill(Color.web(SEV_CRIT));
             planBox.getChildren().add(none);
             return;
         }
-        Label cost = new Label("Total cost: " + ek.totalCost());
-        cost.setFont(Font.font(null, FontWeight.BOLD, 22));
-        planBox.getChildren().add(cost);
+        VBox actions = new VBox();
         for (ContainmentPlan.Action a : ek.actions()) {
             boolean isolate = a.type().equals("ISOLATE_HOST");
-            Label l = new Label((isolate ? "ISOLATE  " : "BLOCK  ") + a.description()
-                    .replace("Isolate host ", "").replace("Block link ", "") + "   (cost " + a.cost() + ")");
-            l.setWrapText(true);
-            l.setStyle("-fx-border-color: " + ORANGE + "; -fx-border-width: 0 0 0 4; -fx-padding: 4 8 4 8;");
-            planBox.getChildren().add(l);
+            String what = a.description().replace("Isolate host ", "").replace("Block link ", "").replace(" -> ", " to ");
+            Label kind = new Label(isolate ? "Isolate" : "Block link");
+            font(kind, bodyFont, FontWeight.BOLD, 13);
+            kind.setMinWidth(76);
+            Label target = new Label(what);
+            target.setWrapText(true);
+            target.setMinHeight(Region.USE_PREF_SIZE);
+            HBox.setHgrow(target, Priority.ALWAYS);
+            target.setMaxWidth(Double.MAX_VALUE);
+            Label cost = new Label(String.valueOf(a.cost()));
+            font(cost, numberFont, FontWeight.BOLD, 16);
+            HBox row = new HBox(8, kind, target, cost);
+            row.setAlignment(Pos.BASELINE_LEFT);
+            row.setPadding(new Insets(7, 0, 7, 0));
+            row.setStyle("-fx-border-color: transparent transparent " + RULE + " transparent;");
+            actions.getChildren().add(row);
         }
+        HBox total = new HBox(8, new Label("Total cost"), new Region());
+        Label totalValue = new Label(String.valueOf(ek.totalCost()));
+        font(totalValue, numberFont, FontWeight.BOLD, 26);
+        HBox.setHgrow(total.getChildren().get(1), Priority.ALWAYS);
+        total.getChildren().add(totalValue);
+        total.setAlignment(Pos.BASELINE_LEFT);
+        total.setPadding(new Insets(6, 0, 0, 0));
+
         Label affected = new Label("Affected assets: " + String.join(", ", ek.affectedAssets()));
         affected.setWrapText(true);
         affected.setMinHeight(Region.USE_PREF_SIZE);
-        Label verified = new Label("Verified: " + (ek.verified()
-                ? "yes - no protected target is reachable after the cut"
-                : "NO - a target is still reachable"));
+        Label verified = new Label(ek.verified()
+                ? "Checked: after the cut, no protected target can be reached."
+                : "Check failed: a protected target can still be reached.");
         verified.setWrapText(true);
         verified.setMinHeight(Region.USE_PREF_SIZE);
-        verified.setTextFill(Color.web(ek.verified() ? GREEN : RED));
-        Label algos = new Label(String.format("%s %.3f ms  |  %s %.3f ms%nSame cost from both algorithms: %s",
-                ek.algorithm(), ek.nanos() / 1e6, ff.algorithm(), ff.nanos() / 1e6,
-                ek.totalCost() == ff.totalCost() ? "yes" : "NO"));
-        algos.setTextFill(Color.web(GREY));
-        algos.setWrapText(true);
-        algos.setMinHeight(Region.USE_PREF_SIZE);
-        planBox.getChildren().addAll(affected, verified, new Region(), algos);
+        verified.setTextFill(Color.web(ek.verified() ? OK : SEV_CRIT));
+        Label how = muted(String.format(Locale.ROOT, "Minimum cut found with Edmonds-Karp in %.2f ms.", ek.nanos() / 1e6));
+        how.setWrapText(true);
+        how.setMinHeight(Region.USE_PREF_SIZE);
+        planBox.getChildren().addAll(actions, total, affected, verified, how);
     }
 
     // ---- shared helpers ---------------------------------------------------------------------
 
-    private static Label sectionTitle(String text) {
+
+    /** Sets a control's font through an inline style so it wins over the inherited stylesheet font. */
+    private static void font(javafx.scene.control.Control c, String family, FontWeight weight, double size) {
+        String w = weight == FontWeight.BOLD ? "bold" : "normal";
+        c.setStyle(c.getStyle() + "-fx-font-family: '" + family + "'; -fx-font-size: " + size + "px; -fx-font-weight: " + w + ";");
+    }
+
+    private static void font(javafx.scene.control.Control c, String family, double size) {
+        font(c, family, FontWeight.NORMAL, size);
+    }
+
+    private static Label heading(String text) {
         Label l = new Label(text);
-        l.setFont(Font.font(null, FontWeight.BOLD, 14));
+        font(l, bodyFont, FontWeight.BOLD, 15);
+        return l;
+    }
+
+    private static Label muted(String text) {
+        Label l = new Label(text);
+        l.setTextFill(Color.web(MUTED));
         return l;
     }
 
@@ -660,36 +840,34 @@ public final class DashboardApp extends Application {
 
     private static String levelColor(int score) {
         if (score >= 80) {
-            return RED;
+            return SEV_CRIT;
         }
         if (score >= 60) {
-            return ORANGE;
+            return SEV_HIGH;
         }
         if (score >= 30) {
-            return YELLOW;
+            return SEV_MED;
         }
-        return GREEN;
+        return SEV_LOW;
     }
 
-    private static String textOn(int score) {
-        return score >= 30 && score < 60 ? "black" : "white";
+    private static Color textOn(int score) {
+        return score >= 60 ? Color.WHITE : Color.web(INK);
     }
 
     private static HBox legend(boolean withCut) {
-        HBox box = new HBox(16);
-        box.setAlignment(Pos.CENTER_LEFT);
-        box.getChildren().add(legendItem(RED, "Attack path / critical risk"));
+        HBox row1 = new HBox(18);
+        row1.setAlignment(Pos.CENTER_LEFT);
+        row1.getChildren().add(legendItem(SEV_CRIT, "Shortest attack path"));
         if (withCut) {
-            box.getChildren().add(legendItem(ORANGE, "Blocked link / isolated host"));
+            row1.getChildren().add(legendItem(INK, "Cut: blocked link or isolated host"));
         }
-        box.getChildren().add(legendItem(BLUE, "Protected target (blue ring)"));
-        box.getChildren().add(legendItem("#b71c1c", "Compromised (dark red ring)"));
-        Label fill = new Label("Node colour = risk: green low, yellow medium, orange high, red critical");
-        fill.setTextFill(Color.web(GREY));
-        VBox all = new VBox(4, box, fill);
-        HBox wrap = new HBox(all);
-        wrap.setPadding(new Insets(2, 0, 0, 0));
-        return wrap;
+        row1.getChildren().add(legendItem(TARGET, "Protected target"));
+        row1.getChildren().add(legendItem("#ffffff; -fx-border-color: " + INK + "; -fx-border-width: 3", "Compromised host"));
+        HBox row2 = new HBox(14, muted("Risk:"), legendItem(SEV_LOW, "Low"), legendItem(SEV_MED, "Medium"),
+                legendItem(SEV_HIGH, "High"), legendItem(SEV_CRIT, "Critical"));
+        row2.setAlignment(Pos.CENTER_LEFT);
+        return new HBox(new VBox(5, row1, row2));
     }
 
     private static HBox legendItem(String color, String text) {
@@ -720,6 +898,7 @@ public final class DashboardApp extends Application {
         GraphView(boolean showCut) {
             this.showCut = showCut;
             holder.setMinSize(260, 260);
+            holder.setStyle("-fx-background-color: #fbfcfd; -fx-border-color: " + RULE + ";");
             canvas.widthProperty().bind(holder.widthProperty());
             canvas.heightProperty().bind(holder.heightProperty());
             canvas.widthProperty().addListener(o -> redraw());
@@ -745,8 +924,7 @@ public final class DashboardApp extends Application {
             GraphicsContext g = canvas.getGraphicsContext2D();
             double w = canvas.getWidth();
             double h = canvas.getHeight();
-            g.setFill(Color.web("#fafafa"));
-            g.fillRect(0, 0, w, h);
+            g.clearRect(0, 0, w, h);
             if (model == null || !model.isAnalysed()) {
                 return;
             }
@@ -754,7 +932,7 @@ public final class DashboardApp extends Application {
             int n = topo.size();
             nx = new double[n];
             ny = new double[n];
-            double radius = Math.max(60, Math.min(w, h) / 2 - 48);
+            double radius = Math.max(60, Math.min(w, h) / 2 - 46);
             for (int i = 0; i < n; i++) {
                 double angle = -Math.PI / 2 + 2 * Math.PI * i / n;
                 nx[i] = w / 2 + radius * Math.cos(angle);
@@ -771,31 +949,36 @@ public final class DashboardApp extends Application {
             List<int[]> blocked = model.blockedLinks(plan);
             Set<Integer> isolated = model.isolatedHosts(plan);
 
-            g.setLineCap(StrokeLineCap.ROUND);
+            g.setLineCap(StrokeLineCap.BUTT);
             g.setLineDashes((double[]) null);
-            g.setStroke(Color.web("#b0bec5"));
-            g.setLineWidth(1.5);
+            g.setStroke(Color.web("#c3ccd5"));
+            g.setLineWidth(1.2);
             for (Link l : topo.links()) {
                 g.strokeLine(nx[l.from()], ny[l.from()], nx[l.to()], ny[l.to()]);
             }
-            g.setStroke(Color.web(RED));
+            g.setStroke(Color.web(SEV_CRIT));
             g.setLineWidth(4);
             for (Link l : topo.links()) {
                 if (pathEdges.contains(edgeKey(n, l.from(), l.to()))) {
                     g.strokeLine(nx[l.from()], ny[l.from()], nx[l.to()], ny[l.to()]);
                 }
             }
-            g.setStroke(Color.web(ORANGE));
-            g.setLineWidth(5);
-            g.setLineDashes(10, 8);
+            g.setStroke(Color.web(INK));
+            g.setLineWidth(4);
+            g.setLineDashes(9, 7);
             for (int[] b : blocked) {
                 g.strokeLine(nx[b[0]], ny[b[0]], nx[b[1]], ny[b[1]]);
             }
             g.setLineDashes((double[]) null);
-            g.setLineWidth(4);
             for (int[] b : blocked) {
                 double mx = (nx[b[0]] + nx[b[1]]) / 2;
                 double my = (ny[b[0]] + ny[b[1]]) / 2;
+                g.setStroke(Color.web("#fbfcfd"));
+                g.setLineWidth(8);
+                g.strokeLine(mx - 8, my - 8, mx + 8, my + 8);
+                g.strokeLine(mx - 8, my + 8, mx + 8, my - 8);
+                g.setStroke(Color.web(INK));
+                g.setLineWidth(3.5);
                 g.strokeLine(mx - 8, my - 8, mx + 8, my + 8);
                 g.strokeLine(mx - 8, my + 8, mx + 8, my - 8);
             }
@@ -805,40 +988,42 @@ public final class DashboardApp extends Application {
                 String name = topo.asset(i).name();
                 Incident inc = model.incidentFor(name);
                 boolean isSelected = name.equals(selectedHost);
-                double r = isSelected ? NODE_R + 4 : NODE_R;
-                g.setFill(inc == null ? Color.web("#cfd8dc") : Color.web(levelColor(inc.riskScore())));
+                double r = NODE_R;
+                g.setFill(inc == null ? Color.web("#e3e7ec") : Color.web(levelColor(inc.riskScore())));
                 g.fillOval(nx[i] - r, ny[i] - r, 2 * r, 2 * r);
-                Color ring = Color.web("#78909c");
-                double ringWidth = 1.5;
-                if (model.sources().contains(i)) {
-                    ring = Color.web("#b71c1c");
-                    ringWidth = 5;
-                } else if (model.targets().contains(i)) {
-                    ring = Color.web(BLUE);
-                    ringWidth = 5;
+                boolean source = model.sources().contains(i);
+                boolean target = model.targets().contains(i);
+                if (source || target) {
+                    g.setStroke(Color.web(source ? INK : TARGET));
+                    g.setLineWidth(5);
+                    g.strokeOval(nx[i] - r, ny[i] - r, 2 * r, 2 * r);
+                } else {
+                    g.setStroke(Color.web("#8f9ba8"));
+                    g.setLineWidth(1);
+                    g.strokeOval(nx[i] - r, ny[i] - r, 2 * r, 2 * r);
                 }
-                if (isSelected && ringWidth < 3) {
-                    ring = Color.BLACK;
-                    ringWidth = 3;
+                if (isSelected) {
+                    g.setStroke(Color.web(INK));
+                    g.setLineWidth(1.5);
+                    g.strokeOval(nx[i] - r - 6, ny[i] - r - 6, 2 * r + 12, 2 * r + 12);
                 }
-                g.setStroke(ring);
-                g.setLineWidth(ringWidth);
-                g.strokeOval(nx[i] - r, ny[i] - r, 2 * r, 2 * r);
                 if (isolated.contains(i)) {
-                    g.setStroke(Color.web(ORANGE));
+                    g.setStroke(Color.web(INK));
                     g.setLineWidth(4);
-                    g.strokeOval(nx[i] - r - 7, ny[i] - r - 7, 2 * r + 14, 2 * r + 14);
+                    g.setLineDashes(6, 5);
+                    g.strokeOval(nx[i] - r - 9, ny[i] - r - 9, 2 * r + 18, 2 * r + 18);
+                    g.setLineDashes((double[]) null);
                     g.strokeLine(nx[i] - r, ny[i] - r, nx[i] + r, ny[i] + r);
                     g.strokeLine(nx[i] - r, ny[i] + r, nx[i] + r, ny[i] - r);
                 }
                 if (inc != null) {
-                    g.setFill("black".equals(textOn(inc.riskScore())) ? Color.BLACK : Color.WHITE);
-                    g.setFont(Font.font(null, FontWeight.BOLD, 12));
-                    g.fillText(String.valueOf(inc.riskScore()), nx[i], ny[i] + 4);
+                    g.setFill(textOn(inc.riskScore()));
+                    g.setFont(Font.font(numberFont, FontWeight.BOLD, 15));
+                    g.fillText(String.valueOf(inc.riskScore()), nx[i], ny[i] + 5);
                 }
-                g.setFill(Color.web("#263238"));
-                g.setFont(Font.font(null, isSelected ? FontWeight.BOLD : FontWeight.NORMAL, 12));
-                g.fillText(name, nx[i], ny[i] + r + 16);
+                g.setFill(Color.web(INK));
+                g.setFont(Font.font(bodyFont, isSelected ? FontWeight.BOLD : FontWeight.NORMAL, 12));
+                g.fillText(name, nx[i], ny[i] + r + 17);
             }
         }
     }

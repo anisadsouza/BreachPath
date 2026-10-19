@@ -1,0 +1,121 @@
+/* BreachPath dashboard theme: cool grey chrome, white data surfaces, ink text.
+   Colour is reserved for risk: only hosts that need attention get colour. */
+
+.root {
+    -fx-base: #e8ebef;
+    -fx-background: #e8ebef;
+    -fx-control-inner-background: #fbfcfd;
+    -fx-text-base-color: #20242a;
+    -fx-focus-color: #0b4f6c;
+    -fx-faint-focus-color: transparent;
+    -fx-accent: #0b4f6c;
+    -fx-text-fill: #20242a;
+}
+
+.label { -fx-text-fill: #20242a; }
+.muted { -fx-text-fill: #5d6671; }
+
+/* ---- tabs: flat, with a heavy underline on the active one ---- */
+.tab-pane > .tab-header-area > .tab-header-background {
+    -fx-background-color: #e8ebef;
+    -fx-effect: null;
+}
+.tab-pane > .tab-header-area { -fx-padding: 0 0 0 14; }
+.tab-pane > .tab-header-area > .headers-region > .tab {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 6 16 4 16;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 3 0;
+}
+.tab-pane > .tab-header-area > .headers-region > .tab:selected {
+    -fx-border-color: transparent transparent #20242a transparent;
+}
+.tab .tab-label { -fx-text-fill: #5d6671; -fx-font-size: 14px; }
+.tab:selected .tab-label { -fx-text-fill: #20242a; -fx-font-weight: bold; }
+.tab-pane > .tab-content-area { -fx-background-color: #f6f7f9; -fx-border-color: #cfd5dc transparent transparent transparent; }
+.tab-pane:focused > .tab-header-area > .headers-region > .tab:selected .focus-indicator { -fx-border-color: transparent; }
+
+/* ---- controls ---- */
+.button {
+    -fx-background-color: #fbfcfd;
+    -fx-background-insets: 0;
+    -fx-background-radius: 2;
+    -fx-border-color: #aab5c1;
+    -fx-border-radius: 2;
+    -fx-text-fill: #20242a;
+    -fx-padding: 6 14 6 14;
+}
+.button:hover { -fx-background-color: #eef1f4; }
+.button:pressed { -fx-background-color: #dde3ea; }
+.button.primary { -fx-background-color: #20242a; -fx-border-color: #20242a; -fx-text-fill: #ffffff; -fx-font-weight: bold; }
+.button.primary:hover { -fx-background-color: #343a43; }
+
+.text-field, .spinner .text-field {
+    -fx-background-color: #ffffff;
+    -fx-background-insets: 0;
+    -fx-background-radius: 2;
+    -fx-border-color: #aab5c1;
+    -fx-border-radius: 2;
+    -fx-padding: 5 8 5 8;
+}
+.text-field:focused { -fx-border-color: #0b4f6c; }
+.spinner { -fx-background-color: transparent; }
+
+.scroll-pane { -fx-background-color: transparent; -fx-padding: 0; }
+.scroll-pane > .viewport { -fx-background-color: transparent; }
+
+.text-area { -fx-background-color: #ffffff; -fx-background-insets: 0; -fx-border-color: #cfd5dc; }
+.text-area .content { -fx-background-color: #ffffff; }
+.text-area:focused { -fx-border-color: #cfd5dc; }
+
+/* ---- tables and lists: dense, ruled, no zebra ---- */
+.table-view { -fx-background-color: #fbfcfd; -fx-background-insets: 0; -fx-border-color: #cfd5dc; -fx-padding: 0; }
+.table-view .column-header-background { -fx-background-color: #eef1f4; }
+.table-view .column-header, .table-view .filler {
+    -fx-background-color: #eef1f4;
+    -fx-border-color: transparent transparent #cfd5dc transparent;
+    -fx-size: 30px;
+}
+.table-view .column-header .label { -fx-font-weight: bold; -fx-text-fill: #20242a; }
+.table-row-cell { -fx-background-color: #fbfcfd; -fx-cell-size: 30px; -fx-border-color: transparent transparent #e3e7ec transparent; }
+.table-row-cell:odd { -fx-background-color: #fbfcfd; }
+.table-row-cell:selected { -fx-background-color: #dde4ec; }
+.table-row-cell:selected .table-cell { -fx-text-fill: #20242a; }
+.table-cell { -fx-text-fill: #20242a; -fx-padding: 0 8 0 8; -fx-alignment: CENTER-LEFT; }
+
+.list-view { -fx-background-color: #fbfcfd; -fx-background-insets: 0; -fx-border-color: #cfd5dc; -fx-padding: 0; }
+.list-cell { -fx-background-color: #fbfcfd; -fx-padding: 3 10 3 10; -fx-text-fill: #20242a; -fx-border-color: transparent transparent #e3e7ec transparent; }
+.list-cell:odd { -fx-background-color: #fbfcfd; }
+.list-cell:filled:selected { -fx-background-color: #dde4ec; -fx-text-fill: #20242a; }
+
+.titled-pane > .title { -fx-background-color: #eef1f4; -fx-background-radius: 0; -fx-border-color: #cfd5dc; -fx-padding: 8 12 8 12; }
+.titled-pane > .title > .text { -fx-font-weight: bold; }
+.titled-pane > *.content { -fx-background-color: #ffffff; -fx-border-color: #cfd5dc; -fx-border-width: 0 1 1 1; -fx-padding: 0; }
+
+/* ---- scenario choice cards ---- */
+.scenario {
+    -fx-background-color: #fbfcfd;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: #aab5c1;
+    -fx-border-width: 1;
+    -fx-padding: 10 14 10 14;
+}
+.scenario:hover { -fx-background-color: #ffffff; }
+.scenario:selected { -fx-background-color: #ffffff; -fx-border-color: #20242a; -fx-border-width: 2; }
+
+/* ---- chart ---- */
+.chart-plot-background { -fx-background-color: transparent; }
+.chart-vertical-grid-lines { -fx-stroke: transparent; }
+.chart-horizontal-grid-lines { -fx-stroke: #dfe3e8; }
+.chart-vertical-zero-line, .chart-horizontal-zero-line { -fx-stroke: #aab5c1; }
+.axis { -fx-tick-label-fill: #5d6671; }
+.chart-title { -fx-font-size: 14px; -fx-font-weight: bold; }
+.axis-label { -fx-text-fill: #5d6671; }
+
+/* ---- triage list rows on the overview ---- */
+.triage-row { -fx-background-color: transparent; -fx-border-color: transparent transparent #cfd5dc transparent; }
+.triage-row:hover { -fx-background-color: #eef1f4; }
+.triage-row.selected { -fx-background-color: #dde4ec; }
