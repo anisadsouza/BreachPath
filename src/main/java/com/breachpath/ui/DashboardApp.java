@@ -164,20 +164,28 @@ public final class DashboardApp extends Application {
         runAnalysis();
     }
 
+    /**
+     * Loads the bundled IBM Plex fonts (SIL Open Font License, see resources/fonts). Bundling avoids
+     * the platform's font lookup, which picks the wrong face for some macOS families. If the files
+     * are missing the dashboard falls back to the system fonts.
+     */
     private static void chooseFonts() {
-        Set<String> have = new HashSet<>(Font.getFamilies());
-        bodyFont = firstInstalled(have, "Avenir Next", "Segoe UI", "Helvetica Neue", "DejaVu Sans", "System");
-        numberFont = firstInstalled(have, "Avenir Next Condensed", "Bahnschrift", "Arial Narrow", bodyFont);
-        monoFont = firstInstalled(have, "Menlo", "Consolas", "DejaVu Sans Mono", "Monospaced");
+        String body = loadFamily("/fonts/IBMPlexSans-Regular.ttf");
+        loadFamily("/fonts/IBMPlexSans-Bold.ttf");
+        String numbers = loadFamily("/fonts/IBMPlexSansCondensed-Bold.ttf");
+        String mono = loadFamily("/fonts/IBMPlexMono-Regular.ttf");
+        bodyFont = body != null ? body : "System";
+        numberFont = numbers != null ? numbers : bodyFont;
+        monoFont = mono != null ? mono : "Monospaced";
     }
 
-    private static String firstInstalled(Set<String> have, String... names) {
-        for (String n : names) {
-            if (have.contains(n)) {
-                return n;
-            }
+    private static String loadFamily(String resource) {
+        URL url = DashboardApp.class.getResource(resource);
+        if (url == null) {
+            return null;
         }
-        return names[names.length - 1];
+        Font f = Font.loadFont(url.toExternalForm(), 12);
+        return f == null ? null : f.getFamily();
     }
 
     private static Tab tab(String title, Node content) {
