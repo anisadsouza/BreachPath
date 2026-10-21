@@ -102,6 +102,7 @@ public final class DashboardApp extends Application {
     // overview
     private final GraphView overviewGraph = new GraphView(false);
     private final VBox triageList = new VBox();
+    private final VBox statsBox = new VBox(8);
     private final CategoryAxis hourAxis = new CategoryAxis();
     private final NumberAxis countAxis = new NumberAxis();
     private final BarChart<String, Number> chart = new BarChart<>(hourAxis, countAxis);
@@ -123,7 +124,6 @@ public final class DashboardApp extends Application {
     private final VBox planBox = new VBox(10);
 
     // benchmarks
-    private final Label validationLabel = new Label();
     private final Button benchButton = new Button("Run benchmarks");
     private final ProgressIndicator benchProgress = new ProgressIndicator();
     private final VBox summaryBox = new VBox();
@@ -199,7 +199,7 @@ public final class DashboardApp extends Application {
     private VBox buildTopBar() {
         Label title = new Label("BreachPath");
         font(title, numberFont, FontWeight.BOLD, 26);
-        Label subtitle = muted("Breach analysis and containment for a simulated enterprise network");
+        Label subtitle = muted("Breach analysis and containment");
         HBox titles = new HBox(14, title, subtitle);
         titles.setAlignment(Pos.BASELINE_LEFT);
 
@@ -241,14 +241,18 @@ public final class DashboardApp extends Application {
         left.setPadding(new Insets(14, 8, 6, 16));
         VBox.setVgrow(overviewGraph.holder, Priority.ALWAYS);
 
-        Label hint = muted("Click a row or a host on the map to see its alert history below.");
+        Label hint = muted("Click a row or a host on the map.");
         hint.setWrapText(true);
         hint.setMinHeight(Region.USE_PREF_SIZE);
         VBox right = new VBox(8, heading("Incidents by risk"), triageList, hint);
         right.setPadding(new Insets(14, 16, 6, 8));
         right.setPrefWidth(360);
 
-        VBox bottom = new VBox(chart);
+        statsBox.setPrefWidth(170);
+        statsBox.setMinWidth(170);
+        statsBox.setPadding(new Insets(8, 0, 0, 0));
+        HBox bottom = new HBox(16, chart, statsBox);
+        HBox.setHgrow(chart, Priority.ALWAYS);
         bottom.setPadding(new Insets(0, 16, 8, 16));
 
         BorderPane pane = new BorderPane();
@@ -280,13 +284,11 @@ public final class DashboardApp extends Application {
         whyCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(
                 c.getValue().reasons().isEmpty() ? "" : c.getValue().reasons().get(0)));
         whyCol.setPrefWidth(260);
-        table.getColumns().add(idCol);
         table.getColumns().add(hostCol);
         table.getColumns().add(riskCol);
         table.getColumns().add(levelCol);
-        table.getColumns().add(whyCol);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        table.setPrefHeight(236);
+        table.setPrefHeight(190);
         table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
             if (!updatingSelection && b != null) {
                 selectHost(b.host());
@@ -295,7 +297,7 @@ public final class DashboardApp extends Application {
 
         ScrollPane explainScroll = new ScrollPane(explainBox);
         explainScroll.setFitToWidth(true);
-        explainScroll.setPrefHeight(262);
+        explainScroll.setPrefHeight(292);
         explainBox.setPadding(new Insets(12, 14, 12, 14));
         explainScroll.setStyle("-fx-background-color: #ffffff; -fx-border-color: " + RULE + ";");
         explainBox.setStyle("-fx-background-color: #ffffff;");
@@ -308,12 +310,12 @@ public final class DashboardApp extends Application {
         add.setOnAction(e -> addEvidence());
         HBox evidence = new HBox(10, new Label("Hour"), hourSpinner, new Label("Extra alerts"), deltaSpinner, add);
         evidence.setAlignment(Pos.CENTER_LEFT);
-        Label evidenceNote = muted("Re-scores the selected host and moves its incident in the red-black tree.");
+        Label evidenceNote = muted("Adds alerts at that hour and re-scores the host.");
         evidenceNote.setWrapText(true);
         evidenceNote.setMinHeight(Region.USE_PREF_SIZE);
 
-        VBox left = new VBox(14, heading("All incidents"), table, heading("Why this score"), explainScroll,
-                heading("Simulate new evidence for the selected host"), new VBox(6, evidence, evidenceNote));
+        VBox left = new VBox(14, heading("Incidents"), table, heading("Selected incident"), explainScroll,
+                heading("Add new evidence"), new VBox(6, evidence, evidenceNote));
         left.setPadding(new Insets(16, 10, 16, 18));
         VBox.setVgrow(explainScroll, Priority.NEVER);
 
@@ -367,7 +369,7 @@ public final class DashboardApp extends Application {
         choices.setMaxHeight(Region.USE_PREF_SIZE);
         scenarioA.setMaxHeight(Region.USE_PREF_SIZE);
         scenarioB.setMaxHeight(Region.USE_PREF_SIZE);
-        VBox top = new VBox(8, heading("Compare containment options"), choices);
+        VBox top = new VBox(8, choices);
         top.setPadding(new Insets(14, 16, 4, 16));
 
         VBox left = new VBox(8, containmentGraph.holder, legend(true));
@@ -389,9 +391,6 @@ public final class DashboardApp extends Application {
     // ---- tab 4: benchmarks ------------------------------------------------------------------
 
     private BorderPane buildBenchmarks() {
-        validationLabel.setWrapText(true);
-        validationLabel.setMinHeight(Region.USE_PREF_SIZE);
-
         benchProgress.setVisible(false);
         benchProgress.setPrefSize(22, 22);
         benchButton.getStyleClass().add("primary");
@@ -410,7 +409,6 @@ public final class DashboardApp extends Application {
         details.setAnimated(false);
 
         VBox content = new VBox(18,
-                new VBox(6, heading("Containment check on your network"), validationLabel),
                 new VBox(8, heading("The five concepts"), bar, summaryBox),
                 details);
         content.setPadding(new Insets(16, 18, 16, 18));
@@ -453,30 +451,21 @@ public final class DashboardApp extends Application {
     private void showBenchmarks(String text) {
         benchArea.setText(BenchmarkSummary.detailForDisplay(text));
         GridPane grid = new GridPane();
-        ColumnConstraints c1 = new ColumnConstraints(170);
+        ColumnConstraints c1 = new ColumnConstraints(190);
         ColumnConstraints c2 = new ColumnConstraints();
         c2.setHgrow(Priority.ALWAYS);
         ColumnConstraints c3 = new ColumnConstraints(86);
         ColumnConstraints c4 = new ColumnConstraints();
         c4.setHgrow(Priority.ALWAYS);
         grid.getColumnConstraints().addAll(c1, c2, c3, c4);
-        String[] heads = {"Concept", "Correctness check", "Result", "Performance"};
+        String[] heads = {"Concept", "Check", "Result", "Performance"};
         for (int c = 0; c < heads.length; c++) {
             Label h = cell(heads[c], true, "#eef1f4");
             grid.add(h, c, 0);
         }
         int r = 1;
         for (BenchmarkSummary.Row row : BenchmarkSummary.parse(text)) {
-            VBox concept = new VBox(2, new Label(row.concept()));
-            font(((Label) concept.getChildren().get(0)), bodyFont, FontWeight.BOLD, 13);
-            if (!row.workload().isEmpty()) {
-                Label w = muted(row.workload());
-                w.setWrapText(true);
-                font(w, bodyFont, FontWeight.NORMAL, 11);
-                concept.getChildren().add(w);
-            }
-            concept.setStyle(cellStyle("#fbfcfd"));
-            grid.add(concept, 0, r);
+            grid.add(cell(row.concept(), true, "#fbfcfd"), 0, r);
             grid.add(cell(row.check(), false, "#fbfcfd"), 1, r);
             Label result = cell(row.passed() ? "Pass" : "Fail", true, "#fbfcfd");
             result.setTextFill(Color.web(row.passed() ? OK : SEV_CRIT));
@@ -576,18 +565,8 @@ public final class DashboardApp extends Application {
         containmentGraph.scenario = shown;
         fillPlan(shown);
 
-        validationLabel.setText("Scenario A: " + verifiedText(a) + "\nScenario B: " + verifiedText(b));
 
         refreshSelectionViews();
-    }
-
-    private static String verifiedText(ContainmentPlan p) {
-        if (!p.feasible()) {
-            return "no finite-cost cut exists, because an uncuttable path reaches a target.";
-        }
-        return p.verified()
-                ? "cost " + p.totalCost() + ". After the cut, no protected target can be reached (checked)."
-                : "cost " + p.totalCost() + ". A target is still reachable after the cut.";
     }
 
     private void fillScenarioCard(ToggleButton card, String name, ContainmentPlan p, String rule) {
@@ -595,14 +574,7 @@ public final class DashboardApp extends Application {
         font(title, bodyFont, FontWeight.BOLD, 14);
         Label cost = new Label(p.feasible() ? "Cost " + p.totalCost() : "No finite cost");
         font(cost, numberFont, FontWeight.BOLD, 26);
-        String what = p.feasible()
-                ? p.actions().size() + (p.actions().size() == 1 ? " action" : " actions") + ", "
-                + p.affectedAssets().size() + (p.affectedAssets().size() == 1 ? " asset" : " assets") + " affected"
-                : "";
         VBox box = new VBox(2, title, cost, muted(rule));
-        if (!what.isEmpty()) {
-            box.getChildren().add(muted(what));
-        }
         card.setGraphic(box);
         card.setText(null);
     }
@@ -686,10 +658,10 @@ public final class DashboardApp extends Application {
             row.setStyle("-fx-border-color: transparent transparent #e3e7ec transparent;");
             explainBox.getChildren().add(row);
         }
-        String total = sum > inc.riskScore()
-                ? "Factors add up to " + sum + "; the score is capped at " + inc.riskScore() + "."
-                : "Factors add up to " + sum + ".";
-        explainBox.getChildren().add(muted(total));
+        if (sum > inc.riskScore()) {
+            explainBox.getChildren().add(muted("Factors add up to " + sum + "; the score is capped at "
+                    + inc.riskScore() + "."));
+        }
     }
 
     // ---- overview widgets -------------------------------------------------------------------
@@ -697,7 +669,7 @@ public final class DashboardApp extends Application {
     private void rebuildTriage() {
         triageList.getChildren().clear();
         List<Incident> ranked = model.ranked();
-        for (int i = 0; i < Math.min(6, ranked.size()); i++) {
+        for (int i = 0; i < Math.min(5, ranked.size()); i++) {
             triageList.getChildren().add(triageRow(ranked.get(i)));
         }
     }
@@ -746,17 +718,29 @@ public final class DashboardApp extends Application {
             series.getData().add(d);
         }
         chart.getData().add(series);
-        chart.setTitle(String.format("%s: %d alerts in hours %d to %d, at most %d in one hour",
-                host, model.windowTotal(host), model.from(), model.to(), model.windowPeak(host)));
+        chart.setTitle("Alerts per hour: " + host);
+        statsBox.getChildren().setAll(
+                statBox(String.valueOf(model.windowTotal(host)), "Total alerts"),
+                statBox(String.valueOf(model.windowPeak(host)), "Most in one hour"),
+                statBox(model.from() + " to " + model.to(), "Hours covered"));
     }
 
     // ---- containment widgets ----------------------------------------------------------------
+
+    private static VBox statBox(String value, String caption) {
+        Label v = new Label(value);
+        font(v, numberFont, FontWeight.BOLD, 22);
+        VBox box = new VBox(0, v, muted(caption));
+        box.setPadding(new Insets(5, 12, 5, 12));
+        box.setStyle("-fx-background-color: #fbfcfd; -fx-border-color: " + RULE + ";");
+        return box;
+    }
 
     private void fillPlan(DashboardModel.Scenario s) {
         planBox.getChildren().clear();
         ContainmentPlan ek = model.plan(s, false);
         String name = s == DashboardModel.Scenario.STRICT ? "Scenario A" : "Scenario B";
-        planBox.getChildren().add(heading(name + ": what to do"));
+        planBox.getChildren().add(heading(name + ": recommended actions"));
         if (!ek.feasible()) {
             Label none = new Label("No finite-cost containment exists. An uncuttable path reaches a target.");
             none.setWrapText(true);
@@ -796,15 +780,18 @@ public final class DashboardApp extends Application {
         Label affected = new Label("Affected assets: " + String.join(", ", ek.affectedAssets()));
         affected.setWrapText(true);
         affected.setMinHeight(Region.USE_PREF_SIZE);
-        Label verified = new Label(ek.verified()
-                ? "Checked: after the cut, no protected target can be reached."
+        Region strip = new Region();
+        strip.setMinWidth(4);
+        strip.setMaxWidth(4);
+        strip.setStyle("-fx-background-color: " + (ek.verified() ? OK : SEV_CRIT) + ";");
+        Label verifiedText = new Label(ek.verified()
+                ? "Verified: no protected target can be reached after the cut."
                 : "Check failed: a protected target can still be reached.");
-        verified.setWrapText(true);
-        verified.setMinHeight(Region.USE_PREF_SIZE);
-        verified.setTextFill(Color.web(ek.verified() ? OK : SEV_CRIT));
-        Label how = muted(String.format(Locale.ROOT, "Minimum cut found with Edmonds-Karp in %.2f ms.", ek.nanos() / 1e6));
-        how.setWrapText(true);
-        how.setMinHeight(Region.USE_PREF_SIZE);
+        verifiedText.setWrapText(true);
+        verifiedText.setMinHeight(Region.USE_PREF_SIZE);
+        HBox verified = new HBox(10, strip, verifiedText);
+        verified.setPadding(new Insets(6, 0, 6, 0));
+        Label how = muted(String.format(Locale.ROOT, "Run time (Edmonds-Karp): %.2f ms", ek.nanos() / 1e6));
         planBox.getChildren().addAll(actions, total, affected, verified, how);
     }
 
