@@ -57,6 +57,9 @@ import java.io.PrintStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -70,7 +73,7 @@ import java.util.regex.Pattern;
  * Run with: mvn javafx:run
  */
 public final class DashboardApp extends Application {
-    private static final double NODE_R = 22;
+    private static final double NODE_R = 17;
 
     // Colour is reserved for risk. Everything else is grey or ink.
     private static final String INK = "#20242a";
@@ -102,7 +105,8 @@ public final class DashboardApp extends Application {
     // overview
     private final GraphView overviewGraph = new GraphView(false);
     private final VBox triageList = new VBox();
-    private final VBox statsBox = new VBox(8);
+    private final HBox statsBox = new HBox(8);
+    private final Label statsTitle = new Label();
     private final CategoryAxis hourAxis = new CategoryAxis();
     private final NumberAxis countAxis = new NumberAxis();
     private final BarChart<String, Number> chart = new BarChart<>(hourAxis, countAxis);
@@ -165,17 +169,17 @@ public final class DashboardApp extends Application {
     }
 
     /**
-     * Loads the bundled IBM Plex fonts (SIL Open Font License, see resources/fonts). Bundling avoids
-     * the platform's font lookup, which picks the wrong face for some macOS families. If the files
-     * are missing the dashboard falls back to the system fonts.
+     * Loads the bundled fonts: Fira Sans for text and numbers, IBM Plex Mono for machine
+     * strings (both under the SIL Open Font License, see resources/fonts). Bundling avoids the
+     * platform font lookup, which picks the wrong face for some macOS families. If the files are
+     * missing the dashboard falls back to the system fonts.
      */
     private static void chooseFonts() {
-        String body = loadFamily("/fonts/IBMPlexSans-Regular.ttf");
-        loadFamily("/fonts/IBMPlexSans-Bold.ttf");
-        String numbers = loadFamily("/fonts/IBMPlexSansCondensed-Bold.ttf");
+        String body = loadFamily("/fonts/FiraSans-Regular.ttf");
+        loadFamily("/fonts/FiraSans-Bold.ttf");
         String mono = loadFamily("/fonts/IBMPlexMono-Regular.ttf");
         bodyFont = body != null ? body : "System";
-        numberFont = numbers != null ? numbers : bodyFont;
+        numberFont = bodyFont;
         monoFont = mono != null ? mono : "Monospaced";
     }
 
@@ -235,7 +239,7 @@ public final class DashboardApp extends Application {
         chart.setCategoryGap(3);
         hourAxis.setLabel("hour of day");
         countAxis.setLabel("alerts");
-        chart.setPrefHeight(210);
+        chart.setPrefHeight(190);
 
         VBox left = new VBox(8, heading("Network map"), overviewGraph.holder, legend(false));
         left.setPadding(new Insets(14, 8, 6, 16));
@@ -244,15 +248,13 @@ public final class DashboardApp extends Application {
         Label hint = muted("Click a row or a host on the map.");
         hint.setWrapText(true);
         hint.setMinHeight(Region.USE_PREF_SIZE);
-        VBox right = new VBox(8, heading("Incidents by risk"), triageList, hint);
+        font(statsTitle, bodyFont, FontWeight.BOLD, 15);
+        VBox.setMargin(statsTitle, new Insets(16, 0, 0, 0));
+        VBox right = new VBox(8, heading("Incidents by risk"), triageList, hint, statsTitle, statsBox);
         right.setPadding(new Insets(14, 16, 6, 8));
         right.setPrefWidth(360);
 
-        statsBox.setPrefWidth(170);
-        statsBox.setMinWidth(170);
-        statsBox.setPadding(new Insets(8, 0, 0, 0));
-        HBox bottom = new HBox(16, chart, statsBox);
-        HBox.setHgrow(chart, Priority.ALWAYS);
+        VBox bottom = new VBox(chart);
         bottom.setPadding(new Insets(0, 16, 8, 16));
 
         BorderPane pane = new BorderPane();
@@ -719,10 +721,11 @@ public final class DashboardApp extends Application {
         }
         chart.getData().add(series);
         chart.setTitle("Alerts per hour: " + host);
+        statsTitle.setText(host);
         statsBox.getChildren().setAll(
                 statBox(String.valueOf(model.windowTotal(host)), "Total alerts"),
-                statBox(String.valueOf(model.windowPeak(host)), "Most in one hour"),
-                statBox(model.from() + " to " + model.to(), "Hours covered"));
+                statBox(String.valueOf(model.windowPeak(host)), "Peak/hour"),
+                statBox(model.from() + "-" + model.to(), "Window"));
     }
 
     // ---- containment widgets ----------------------------------------------------------------
@@ -731,7 +734,9 @@ public final class DashboardApp extends Application {
         Label v = new Label(value);
         font(v, numberFont, FontWeight.BOLD, 22);
         VBox box = new VBox(0, v, muted(caption));
-        box.setPadding(new Insets(5, 12, 5, 12));
+        box.setPadding(new Insets(5, 10, 5, 10));
+        box.setPrefWidth(104);
+        box.setMinWidth(0);
         box.setStyle("-fx-background-color: #fbfcfd; -fx-border-color: " + RULE + ";");
         return box;
     }
@@ -887,6 +892,7 @@ public final class DashboardApp extends Application {
         final Pane holder = new Pane(canvas);
         final boolean showCut;
         DashboardModel.Scenario scenario = DashboardModel.Scenario.NONE;
+        private boolean hasUnreachable;
         private double[] nx = new double[0];
         private double[] ny = new double[0];
 
@@ -915,6 +921,37 @@ public final class DashboardApp extends Application {
             }
         }
 
+        /** Hops from the nearest compromised host (links read both ways); unreachable hosts go last. */
+        private int[] layers(Topology topo) {
+            int n = topo.size();
+            int[] dist = new int[n];
+            Arrays.fill(dist, -1);
+            ArrayDeque<Integer> queue = new ArrayDeque<>();
+            for (int s : model.sources()) {
+                dist[s] = 0;
+                queue.add(s);
+            }
+            while (!queue.isEmpty()) {
+                int u = queue.poll();
+                for (Link l : topo.links()) {
+                    int v = l.from() == u ? l.to() : (l.to() == u ? l.from() : -1);
+                    if (v >= 0 && dist[v] < 0) {
+                        dist[v] = dist[u] + 1;
+                        queue.add(v);
+                    }
+                }
+            }
+            int max = Arrays.stream(dist).max().orElse(0);
+            boolean any = Arrays.stream(dist).anyMatch(d -> d < 0);
+            for (int i = 0; i < n; i++) {
+                if (dist[i] < 0) {
+                    dist[i] = max + 1;
+                }
+            }
+            hasUnreachable = any;
+            return dist;
+        }
+
         void redraw() {
             GraphicsContext g = canvas.getGraphicsContext2D();
             double w = canvas.getWidth();
@@ -927,11 +964,45 @@ public final class DashboardApp extends Application {
             int n = topo.size();
             nx = new double[n];
             ny = new double[n];
-            double radius = Math.max(60, Math.min(w, h) / 2 - 46);
+            int[] layer = layers(topo);
+            int layerCount = Arrays.stream(layer).max().orElse(0) + 1;
+            double left = 70;
+            double right = 70;
+            double top = 52;
+            double bottom = 22;
+            List<List<Integer>> columns = new ArrayList<>();
+            for (int c = 0; c < layerCount; c++) {
+                columns.add(new ArrayList<>());
+            }
             for (int i = 0; i < n; i++) {
-                double angle = -Math.PI / 2 + 2 * Math.PI * i / n;
-                nx[i] = w / 2 + radius * Math.cos(angle);
-                ny[i] = h / 2 + radius * Math.sin(angle);
+                columns.get(layer[i]).add(i);
+            }
+            for (List<Integer> col : columns) {
+                col.sort((a1, b1) -> {
+                    Incident ia = model.incidentFor(topo.asset(a1).name());
+                    Incident ib = model.incidentFor(topo.asset(b1).name());
+                    int byRisk = Integer.compare(ib == null ? -1 : ib.riskScore(), ia == null ? -1 : ia.riskScore());
+                    return byRisk != 0 ? byRisk : Integer.compare(a1, b1);
+                });
+            }
+            g.setTextAlign(TextAlignment.CENTER);
+            g.setFont(Font.font(bodyFont, FontWeight.NORMAL, 12));
+            for (int c = 0; c < layerCount; c++) {
+                double x = layerCount == 1 ? w / 2 : left + c * (w - left - right) / (layerCount - 1);
+                List<Integer> col = columns.get(c);
+                for (int j = 0; j < col.size(); j++) {
+                    int i = col.get(j);
+                    nx[i] = x;
+                    ny[i] = top + (j + 1) * (h - top - bottom) / (col.size() + 1);
+                }
+                String caption = c == 0 ? "Compromised"
+                        : (hasUnreachable && c == layerCount - 1) ? "Not reachable"
+                        : c + (c == 1 ? " step away" : " steps away");
+                g.setFill(Color.web(MUTED));
+                g.fillText(caption, x, 24);
+                g.setStroke(Color.web("#dfe3e8"));
+                g.setLineWidth(1);
+                g.strokeLine(x, 34, x, h - 14);
             }
 
             Set<Long> pathEdges = new HashSet<>();
@@ -1013,12 +1084,16 @@ public final class DashboardApp extends Application {
                 }
                 if (inc != null) {
                     g.setFill(textOn(inc.riskScore()));
-                    g.setFont(Font.font(numberFont, FontWeight.BOLD, 15));
+                    g.setFont(Font.font(numberFont, FontWeight.BOLD, 13));
                     g.fillText(String.valueOf(inc.riskScore()), nx[i], ny[i] + 5);
                 }
-                g.setFill(Color.web(INK));
+                double ly = ny[i] + r + (isolated.contains(i) ? 23 : 15);
                 g.setFont(Font.font(bodyFont, isSelected ? FontWeight.BOLD : FontWeight.NORMAL, 12));
-                g.fillText(name, nx[i], ny[i] + r + 17);
+                g.setStroke(Color.web("#fbfcfd"));
+                g.setLineWidth(4);
+                g.strokeText(name, nx[i], ly);
+                g.setFill(Color.web(INK));
+                g.fillText(name, nx[i], ly);
             }
         }
     }
