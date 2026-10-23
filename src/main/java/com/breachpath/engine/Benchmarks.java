@@ -3,7 +3,6 @@ package com.breachpath.engine;
 import com.breachpath.graph.BruteForceMinCut;
 import com.breachpath.graph.EdmondsKarp;
 import com.breachpath.graph.FlowNetwork;
-import com.breachpath.graph.FordFulkerson;
 import com.breachpath.graph.MaxFlowResult;
 import com.breachpath.rbtree.RedBlackTree;
 import com.breachpath.segmenttree.SegmentTree;
@@ -52,10 +51,9 @@ public final class Benchmarks {
     // ------------------------------------------------------------------ flow
 
     private static void validateFlows() {
-        System.out.println("== Flow algorithms vs brute-force minimum cut (small random graphs) ==");
+        System.out.println("== Edmonds-Karp vs brute-force minimum cut (small random graphs) ==");
         Random rnd = new Random(1);
         EdmondsKarp ek = new EdmondsKarp();
-        FordFulkerson ff = new FordFulkerson();
         int trials = 200;
         int mismatches = 0;
         for (int i = 0; i < trials; i++) {
@@ -63,9 +61,7 @@ public final class Benchmarks {
             FlowNetwork net = randomNetwork(rnd, n, 6 + rnd.nextInt(8), 9);
             int brute = BruteForceMinCut.minCutCost(net, 0, n - 1, Integer.MAX_VALUE);
             MaxFlowResult a = ek.compute(net, 0, n - 1);
-            MaxFlowResult b = ff.compute(net, 0, n - 1);
-            if (a.maxFlow() != brute || b.maxFlow() != brute
-                    || a.cutCost() != brute || b.cutCost() != brute) {
+            if (a.maxFlow() != brute || a.cutCost() != brute) {
                 mismatches++;
             }
         }
@@ -73,9 +69,8 @@ public final class Benchmarks {
     }
 
     private static void benchFlows() {
-        System.out.println("== Max flow: Edmonds-Karp vs Ford-Fulkerson (generated graphs) ==");
-        System.out.printf("%-8s %-8s %-10s %-14s %-14s %-6s%n",
-                "nodes", "edges", "max flow", "EK (ms)", "FF (ms)", "match");
+        System.out.println("== Max flow: Edmonds-Karp (generated graphs) ==");
+        System.out.printf("%-8s %-8s %-10s %s%n", "nodes", "edges", "max flow", "EK (ms)");
         Random rnd = new Random(2);
         for (int n : new int[]{100, 200, 400}) {
             FlowNetwork net = randomNetwork(rnd, n, n * 5, 100);
@@ -83,9 +78,7 @@ public final class Benchmarks {
                 net.addEdge(i, i + 1, 50);
             }
             MaxFlowResult a = new EdmondsKarp().compute(net, 0, n - 1);
-            MaxFlowResult b = new FordFulkerson().compute(net, 0, n - 1);
-            System.out.printf("%-8d %-8d %-10d %-14.2f %-14.2f %-6s%n", n, net.edges().size(),
-                    a.maxFlow(), ms(a.nanos()), ms(b.nanos()), a.maxFlow() == b.maxFlow());
+            System.out.printf("%-8d %-8d %-10d %.2f%n", n, net.edges().size(), a.maxFlow(), ms(a.nanos()));
         }
         System.out.println();
     }

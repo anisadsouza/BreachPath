@@ -11,7 +11,6 @@ import com.breachpath.engine.PatternEngine;
 import com.breachpath.engine.RiskAssessment;
 import com.breachpath.engine.RiskScorer;
 import com.breachpath.graph.EdmondsKarp;
-import com.breachpath.graph.FordFulkerson;
 import com.breachpath.model.Incident;
 import com.breachpath.model.SecurityEvent;
 import com.breachpath.model.Topology;
@@ -57,9 +56,7 @@ public final class DashboardModel {
     private int to;
     private List<List<Integer>> attackPaths = List.of();
     private ContainmentPlan strictEk;
-    private ContainmentPlan strictFf;
     private ContainmentPlan relaxedEk;
-    private ContainmentPlan relaxedFf;
     private boolean analysed;
 
     public DashboardModel(Topology topology, List<SecurityEvent> events, IocEngine iocEngine,
@@ -97,18 +94,14 @@ public final class DashboardModel {
 
         ContainmentPlanner planner = new ContainmentPlanner();
         ContainmentPlan sEk = planner.plan(topology, src, tgt, false, new EdmondsKarp());
-        ContainmentPlan sFf = planner.plan(topology, src, tgt, false, new FordFulkerson());
         ContainmentPlan rEk = planner.plan(topology, src, tgt, true, new EdmondsKarp());
-        ContainmentPlan rFf = planner.plan(topology, src, tgt, true, new FordFulkerson());
 
         this.sources = src;
         this.targets = tgt;
         this.from = fromHour;
         this.to = toHour;
         this.strictEk = sEk;
-        this.strictFf = sFf;
         this.relaxedEk = rEk;
-        this.relaxedFf = rFf;
 
         List<List<Integer>> paths = new ArrayList<>();
         for (int s : src) {
@@ -267,13 +260,13 @@ public final class DashboardModel {
         return timeline.peak(host, from, to);
     }
 
-    public ContainmentPlan plan(Scenario s, boolean useFordFulkerson) {
+    public ContainmentPlan plan(Scenario s) {
         requireAnalysed();
         switch (s) {
             case STRICT:
-                return useFordFulkerson ? strictFf : strictEk;
+                return strictEk;
             case RELAXED:
-                return useFordFulkerson ? relaxedFf : relaxedEk;
+                return relaxedEk;
             default:
                 return null;
         }

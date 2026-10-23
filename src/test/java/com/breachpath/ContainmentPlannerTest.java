@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.breachpath.engine.ContainmentPlan;
 import com.breachpath.engine.ContainmentPlanner;
 import com.breachpath.graph.EdmondsKarp;
-import com.breachpath.graph.FordFulkerson;
 import com.breachpath.graph.MaxFlowAlgorithm;
 import com.breachpath.model.Asset;
 import com.breachpath.model.Link;
@@ -34,7 +33,7 @@ class ContainmentPlannerTest {
 
     @Test
     void prefersCheapHostIsolationOverExpensiveLinks() {
-        for (MaxFlowAlgorithm algo : new MaxFlowAlgorithm[]{new EdmondsKarp(), new FordFulkerson()}) {
+        for (MaxFlowAlgorithm algo : new MaxFlowAlgorithm[]{new EdmondsKarp()}) {
             ContainmentPlan p = new ContainmentPlanner().plan(diamond(), List.of(0), List.of(3), false, algo);
             assertTrue(p.feasible());
             assertEquals(10, p.totalCost());
