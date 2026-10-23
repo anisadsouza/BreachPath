@@ -54,13 +54,13 @@ class DashboardModelTest {
     @Test
     void containmentScenariosMatchConsoleReport() {
         model.analyse("WS-Alice", "DB-PROD", 0, 23);
-        ContainmentPlan strict = model.plan(DashboardModel.Scenario.STRICT, false);
-        ContainmentPlan relaxed = model.plan(DashboardModel.Scenario.RELAXED, false);
+        ContainmentPlan strict = model.plan(DashboardModel.Scenario.STRICT);
+        ContainmentPlan relaxed = model.plan(DashboardModel.Scenario.RELAXED);
         assertEquals(18, strict.totalCost());
         assertEquals(5, relaxed.totalCost());
-        assertEquals(strict.totalCost(), model.plan(DashboardModel.Scenario.STRICT, true).totalCost());
-        assertEquals(relaxed.totalCost(), model.plan(DashboardModel.Scenario.RELAXED, true).totalCost());
-        assertNull(model.plan(DashboardModel.Scenario.NONE, false));
+        assertTrue(strict.verified());
+        assertTrue(relaxed.verified());
+        assertNull(model.plan(DashboardModel.Scenario.NONE));
 
         List<int[]> blocked = model.blockedLinks(strict);
         assertEquals(2, blocked.size());
@@ -138,12 +138,14 @@ class DashboardModelTest {
         model.analyse("WS-Alice,WS-Bob", "DB-PROD,CLOUD-ADMIN", 0, 23);
         assertEquals(2, model.sources().size());
         assertEquals(2, model.targets().size());
-        ContainmentPlan p = model.plan(DashboardModel.Scenario.STRICT, false);
+        ContainmentPlan p = model.plan(DashboardModel.Scenario.STRICT);
         if (p.feasible()) {
             assertTrue(p.verified());
         }
-        assertEquals(model.plan(DashboardModel.Scenario.RELAXED, false).totalCost(),
-                model.plan(DashboardModel.Scenario.RELAXED, true).totalCost());
+        ContainmentPlan relaxed = model.plan(DashboardModel.Scenario.RELAXED);
+        if (relaxed.feasible()) {
+            assertTrue(relaxed.verified());
+        }
     }
 
     @Test

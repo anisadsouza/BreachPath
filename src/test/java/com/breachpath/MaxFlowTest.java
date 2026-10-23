@@ -6,14 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.breachpath.graph.BruteForceMinCut;
 import com.breachpath.graph.EdmondsKarp;
 import com.breachpath.graph.FlowNetwork;
-import com.breachpath.graph.FordFulkerson;
 import com.breachpath.graph.MaxFlowAlgorithm;
 import com.breachpath.graph.MaxFlowResult;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 class MaxFlowTest {
-    private final MaxFlowAlgorithm[] algorithms = {new EdmondsKarp(), new FordFulkerson()};
+    private final MaxFlowAlgorithm[] algorithms = {new EdmondsKarp()};
 
     private static FlowNetwork textbookNetwork() {
         FlowNetwork net = new FlowNetwork(6);
@@ -64,7 +63,7 @@ class MaxFlowTest {
     void invalidEndpointsAreRejected() {
         FlowNetwork net = new FlowNetwork(3);
         assertThrows(IllegalArgumentException.class, () -> new EdmondsKarp().compute(net, 1, 1));
-        assertThrows(IllegalArgumentException.class, () -> new FordFulkerson().compute(net, 0, 7));
+        assertThrows(IllegalArgumentException.class, () -> new EdmondsKarp().compute(net, 0, 7));
     }
 
     @Test
