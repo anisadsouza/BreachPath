@@ -451,7 +451,7 @@ public final class DashboardApp extends Application {
     }
 
     private void showBenchmarks(String text) {
-        benchArea.setText(BenchmarkSummary.detailForDisplay(text));
+        benchArea.setText(text);
         GridPane grid = new GridPane();
         ColumnConstraints c1 = new ColumnConstraints(190);
         ColumnConstraints c2 = new ColumnConstraints();
@@ -558,8 +558,8 @@ public final class DashboardApp extends Application {
         patternsArea.setText(sb.toString());
         updateIocResults();
 
-        ContainmentPlan a = model.plan(DashboardModel.Scenario.STRICT, false);
-        ContainmentPlan b = model.plan(DashboardModel.Scenario.RELAXED, false);
+        ContainmentPlan a = model.plan(DashboardModel.Scenario.STRICT);
+        ContainmentPlan b = model.plan(DashboardModel.Scenario.RELAXED);
         fillScenarioCard(scenarioA, "Scenario A", a, "Compromised hosts stay online");
         fillScenarioCard(scenarioB, "Scenario B", b, "The compromised host itself may be isolated");
         DashboardModel.Scenario shown = scenarioB.isSelected()
@@ -743,7 +743,7 @@ public final class DashboardApp extends Application {
 
     private void fillPlan(DashboardModel.Scenario s) {
         planBox.getChildren().clear();
-        ContainmentPlan ek = model.plan(s, false);
+        ContainmentPlan ek = model.plan(s);
         String name = s == DashboardModel.Scenario.STRICT ? "Scenario A" : "Scenario B";
         planBox.getChildren().add(heading(name + ": recommended actions"));
         if (!ek.feasible()) {
@@ -1011,7 +1011,7 @@ public final class DashboardApp extends Application {
                     pathEdges.add(edgeKey(n, p.get(i), p.get(i + 1)));
                 }
             }
-            ContainmentPlan plan = showCut ? model.plan(scenario, false) : null;
+            ContainmentPlan plan = showCut ? model.plan(scenario) : null;
             List<int[]> blocked = model.blockedLinks(plan);
             Set<Integer> isolated = model.isolatedHosts(plan);
 

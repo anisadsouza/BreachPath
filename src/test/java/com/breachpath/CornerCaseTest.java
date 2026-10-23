@@ -11,7 +11,6 @@ import com.breachpath.engine.ContainmentPlanner;
 import com.breachpath.engine.EventTimeline;
 import com.breachpath.engine.IncidentIndex;
 import com.breachpath.graph.EdmondsKarp;
-import com.breachpath.graph.FordFulkerson;
 import com.breachpath.graph.MaxFlowAlgorithm;
 import com.breachpath.model.Asset;
 import com.breachpath.model.Incident;
@@ -49,7 +48,7 @@ class CornerCaseTest {
 
     @Test
     void multipleCompromisedHostsAreAllCutOffByOneCheapIsolation() {
-        for (MaxFlowAlgorithm algo : new MaxFlowAlgorithm[]{new EdmondsKarp(), new FordFulkerson()}) {
+        for (MaxFlowAlgorithm algo : new MaxFlowAlgorithm[]{new EdmondsKarp()}) {
             ContainmentPlan p = new ContainmentPlanner().plan(funnel(), List.of(0, 1), List.of(3), false, algo);
             assertTrue(p.feasible());
             assertEquals(7, p.totalCost(), algo.name());
@@ -72,7 +71,7 @@ class CornerCaseTest {
     void uncuttablePathMeansNoFiniteContainment() {
         List<Asset> assets = List.of(new Asset("A", "workstation", 1), new Asset("B", "database", 100));
         List<Link> links = List.of(new Link(0, 1, ContainmentPlanner.INF, false));
-        for (MaxFlowAlgorithm algo : new MaxFlowAlgorithm[]{new EdmondsKarp(), new FordFulkerson()}) {
+        for (MaxFlowAlgorithm algo : new MaxFlowAlgorithm[]{new EdmondsKarp()}) {
             ContainmentPlan strict = new ContainmentPlanner().plan(new Topology(assets, links), List.of(0),
                     List.of(1), false, algo);
             assertFalse(strict.feasible());
