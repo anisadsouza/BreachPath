@@ -10,8 +10,7 @@ import java.util.regex.Pattern;
 
 /**
  * Turns the text printed by {@code Benchmarks.runAll()} into a five-row summary (one row per
- * required concept) and a flow-section rewrite that only shows Edmonds-Karp. No JavaFX here,
- * so it is unit-tested.
+ * required concept). No JavaFX here, so it is unit-tested.
  */
 public final class BenchmarkSummary {
 
@@ -23,7 +22,7 @@ public final class BenchmarkSummary {
     private static final Pattern WORKLOAD = Pattern.compile("\\(([^()]*)\\)\\s*$");
     private static final Pattern FLOW_CHECK = Pattern.compile("(\\d+) random graphs checked, mismatches: (\\d+)");
     private static final Pattern FLOW_ROW = Pattern.compile(
-            "^(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+([\\d.]+)\\s+([\\d.]+)\\s+\\w+\\s*$", Pattern.MULTILINE);
+            "^(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+([\\d.]+)\\s*$", Pattern.MULTILINE);
     private static final Pattern TRIE = Pattern.compile(
             "trie:\\s*([\\d.]+) ms\\s+linear scan:\\s*([\\d.]+) ms\\s+results match:\\s*(\\w+)");
     private static final Pattern WILDCARD = Pattern.compile(
@@ -51,44 +50,10 @@ public final class BenchmarkSummary {
         return rows;
     }
 
-    /**
-     * The benchmark text with its flow-timing table reduced to Edmonds-Karp only, so the detailed
-     * view stays focused on the one flow algorithm used by the application.
-     */
-    public static String detailForDisplay(String output) {
-        if (output == null) {
-            return "";
-        }
-        StringBuilder out = new StringBuilder();
-        boolean inFlowTable = false;
-        for (String line : output.split("\\R", -1)) {
-            Matcher t = TITLE.matcher(line);
-            if (t.matches()) {
-                inFlowTable = t.group(1).startsWith("Max flow:");
-                out.append(inFlowTable ? "== Max flow: Edmonds-Karp (generated graphs) ==" : line).append('\n');
-                continue;
-            }
-            if (inFlowTable) {
-                if (line.startsWith("nodes")) {
-                    out.append(String.format(Locale.ROOT, "%-8s %-8s %-10s %s%n", "nodes", "edges", "max flow", "EK (ms)"));
-                    continue;
-                }
-                Matcher r = FLOW_ROW.matcher(line);
-                if (r.matches()) {
-                    out.append(String.format(Locale.ROOT, "%-8s %-8s %-10s %s%n", r.group(1), r.group(2), r.group(3),
-                            r.group(4)));
-                    continue;
-                }
-            }
-            out.append(line).append('\n');
-        }
-        return out.toString().stripTrailing();
-    }
-
     // ---- rows -------------------------------------------------------------------------------
 
     private static Row flowRow(Map<String, String> sections) {
-        String check = find(sections, "Flow algorithms vs brute-force");
+        String check = find(sections, "Edmonds-Karp vs brute-force");
         String table = find(sections, "Max flow:");
         Matcher c = FLOW_CHECK.matcher(check);
         if (!c.find()) {

@@ -12,7 +12,6 @@ import com.breachpath.engine.PatternEngine;
 import com.breachpath.engine.RiskAssessment;
 import com.breachpath.engine.RiskScorer;
 import com.breachpath.graph.EdmondsKarp;
-import com.breachpath.graph.FordFulkerson;
 import com.breachpath.graph.MaxFlowAlgorithm;
 import com.breachpath.model.Incident;
 import com.breachpath.model.SecurityEvent;
@@ -158,9 +157,7 @@ public final class ConsoleApp {
         heading("5. Containment options (max flow / min cut with node splitting)");
         ContainmentPlanner planner = new ContainmentPlanner();
         MaxFlowAlgorithm ek = new EdmondsKarp();
-        MaxFlowAlgorithm ff = new FordFulkerson();
         ContainmentPlan strict = planner.plan(topo, sources, targets, false, ek);
-        ContainmentPlan strictFf = planner.plan(topo, sources, targets, false, ff);
         ContainmentPlan relaxed = planner.plan(topo, sources, targets, true, ek);
 
         System.out.println("Scenario A: compromised hosts stay online; cut the network downstream");
@@ -169,10 +166,9 @@ public final class ConsoleApp {
         System.out.println("Scenario B: isolating the compromised host itself is allowed");
         printPlan(relaxed);
 
-        heading("6. Compare algorithms on this network");
-        System.out.printf("%-22s cost %-5d %.3f ms%n", strict.algorithm(), strict.totalCost(), strict.nanos() / 1e6);
-        System.out.printf("%-22s cost %-5d %.3f ms%n", strictFf.algorithm(), strictFf.totalCost(), strictFf.nanos() / 1e6);
-        System.out.println("Costs agree: " + (strict.totalCost() == strictFf.totalCost()));
+        heading("6. Algorithm timing on this network");
+        System.out.printf("%-22s scenario A: cost %-5d %.3f ms%n", strict.algorithm(), strict.totalCost(), strict.nanos() / 1e6);
+        System.out.printf("%-22s scenario B: cost %-5d %.3f ms%n", relaxed.algorithm(), relaxed.totalCost(), relaxed.nanos() / 1e6);
 
         // 7. Benchmarks -------------------------------------------------------
         if (benchmark) {

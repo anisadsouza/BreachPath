@@ -12,14 +12,14 @@ import org.junit.jupiter.api.Test;
 /** The summary parser is checked against the exact output format of Benchmarks.runAll(). */
 class BenchmarkSummaryTest {
     private static final String SAMPLE = String.join("\n",
-            "== Flow algorithms vs brute-force minimum cut (small random graphs) ==",
+            "== Edmonds-Karp vs brute-force minimum cut (small random graphs) ==",
             "200 random graphs checked, mismatches: 0",
             "",
-            "== Max flow: Edmonds-Karp vs Ford-Fulkerson (generated graphs) ==",
-            "nodes    edges    max flow   EK (ms)        FF (ms)        match ",
-            "100      597      545        1.08           29.64          true  ",
-            "200      1190     155        1.10           20.32          true  ",
-            "400      2396     173        11.51          53.76          true  ",
+            "== Max flow: Edmonds-Karp (generated graphs) ==",
+            "nodes    edges    max flow   EK (ms)",
+            "100      597      545        1.08",
+            "200      1190     155        1.10",
+            "400      2396     173        11.51",
             "",
             "== Prefix Trie vs linear scan (100,000 words, 500 prefix queries) ==",
             "trie: 16.95 ms   linear scan: 1086.23 ms   results match: true",
@@ -83,18 +83,5 @@ class BenchmarkSummaryTest {
             assertEquals(5, rows.size());
             assertTrue(rows.stream().noneMatch(Row::passed));
         }
-    }
-
-    @Test
-    void detailViewKeepsEverythingButDropsTheFordFulkersonColumns() {
-        String detail = BenchmarkSummary.detailForDisplay(SAMPLE);
-        assertFalse(detail.contains("Ford"));
-        assertFalse(detail.contains("FF (ms)"));
-        assertFalse(detail.contains("29.64"));
-        assertTrue(detail.contains("== Max flow: Edmonds-Karp (generated graphs) =="));
-        assertTrue(detail.contains("11.51"));
-        assertTrue(detail.contains("== Red-black tree vs java.util.TreeMap"));
-        assertTrue(detail.contains("Note: these are experiments on synthetic data"));
-        assertEquals("", BenchmarkSummary.detailForDisplay(null));
     }
 }
