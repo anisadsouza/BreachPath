@@ -1,5 +1,8 @@
 package com.breachpath.segmenttree;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Segment tree supporting range sum, range maximum and point update.
  * All ranges are inclusive and 0-based.
@@ -41,6 +44,31 @@ public class SegmentTree {
 
     public int get(int index) {
         return rangeSum(index, index);
+    }
+
+    /**
+     * The stored nodes that a range query combines, each as {from, to, sum, max}. Together they
+     * cover [left, right] exactly once, which is why a query needs only about log n of them.
+     */
+    public List<int[]> coveringRanges(int left, int right) {
+        checkRange(left, right);
+        List<int[]> out = new ArrayList<>();
+        cover(1, 0, n - 1, left, right, out);
+        return out;
+    }
+
+    private void cover(int node, int nl, int nr, int l, int r, List<int[]> out) {
+        if (l <= nl && nr <= r) {
+            out.add(new int[]{nl, nr, sum[node], max[node]});
+            return;
+        }
+        int mid = (nl + nr) >>> 1;
+        if (l <= mid) {
+            cover(2 * node, nl, mid, l, r, out);
+        }
+        if (r > mid) {
+            cover(2 * node + 1, mid + 1, nr, l, r, out);
+        }
     }
 
     private void build(int node, int l, int r, int[] data) {

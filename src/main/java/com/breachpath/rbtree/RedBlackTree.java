@@ -153,6 +153,41 @@ public class RedBlackTree<K extends Comparable<K>, V> {
         return height(root);
     }
 
+    /**
+     * One node, for display: its key and value, its colour, its depth (0 for the root) and the
+     * position of its parent in the list returned by {@link #inOrderView()} (-1 for the root).
+     */
+    public record NodeView<K, V>(K key, V value, boolean red, int depth, int parent) {
+    }
+
+    /** A read-only snapshot of the tree, nodes in key order. */
+    public List<NodeView<K, V>> inOrderView() {
+        List<Node<K, V>> order = new ArrayList<>();
+        collect(root, order);
+        java.util.IdentityHashMap<Node<K, V>, Integer> position = new java.util.IdentityHashMap<>();
+        for (int i = 0; i < order.size(); i++) {
+            position.put(order.get(i), i);
+        }
+        List<NodeView<K, V>> out = new ArrayList<>();
+        for (Node<K, V> n : order) {
+            int depth = 0;
+            for (Node<K, V> p = n.parent; p != nil; p = p.parent) {
+                depth++;
+            }
+            out.add(new NodeView<>(n.key, n.value, n.red, depth, n.parent == nil ? -1 : position.get(n.parent)));
+        }
+        return out;
+    }
+
+    private void collect(Node<K, V> n, List<Node<K, V>> out) {
+        if (n == nil) {
+            return;
+        }
+        collect(n.left, out);
+        out.add(n);
+        collect(n.right, out);
+    }
+
     /** Checks BST order, root black, no red-red parent/child, and equal black height on all paths. */
     public boolean validate() {
         if (root == nil) {
