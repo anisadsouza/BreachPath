@@ -119,3 +119,24 @@
 .triage-row { -fx-background-color: transparent; -fx-border-color: transparent transparent #cfd5dc transparent; }
 .triage-row:hover { -fx-background-color: #eef1f4; }
 .triage-row.selected { -fx-background-color: #dde4ec; }
+
+/* ---- host pickers and tooltips ---- */
+.menu-button {
+    -fx-background-color: #ffffff;
+    -fx-background-insets: 0;
+    -fx-background-radius: 2;
+    -fx-border-color: #aab5c1;
+    -fx-border-radius: 2;
+    -fx-padding: 3 6 3 6;
+}
+.menu-button:hover { -fx-background-color: #eef1f4; }
+.menu-button:showing { -fx-border-color: #0b4f6c; }
+.context-menu { -fx-background-color: #fbfcfd; -fx-background-radius: 0; -fx-border-color: #aab5c1; -fx-padding: 2; }
+.menu-item:focused { -fx-background-color: #dde4ec; }
+.menu-item:focused .label { -fx-text-fill: #20242a; }
+.tooltip {
+    -fx-background-color: #20242a;
+    -fx-background-radius: 2;
+    -fx-text-fill: #ffffff;
+    -fx-padding: 6 8 6 8;
+}
