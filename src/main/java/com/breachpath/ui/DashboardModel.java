@@ -12,8 +12,10 @@ import com.breachpath.engine.RiskAssessment;
 import com.breachpath.engine.RiskScorer;
 import com.breachpath.graph.EdmondsKarp;
 import com.breachpath.model.Incident;
+import com.breachpath.model.IncidentKey;
 import com.breachpath.model.SecurityEvent;
 import com.breachpath.model.Topology;
+import com.breachpath.rbtree.RedBlackTree;
 import com.breachpath.storage.DataLoader;
 
 import java.io.IOException;
@@ -46,6 +48,7 @@ public final class DashboardModel {
     private IncidentIndex incidents;
     private Map<String, HostEvidence> evidence;
     private Set<String> reaching;
+    private PatternEngine patternEngine;
     private Map<String, List<String>> patternHits = new LinkedHashMap<>();
     private final Map<String, Integer> incidentByHost = new HashMap<>();
     private final RiskScorer scorer = new RiskScorer();
@@ -117,6 +120,7 @@ public final class DashboardModel {
         this.timeline = new EventTimeline(events, HOURS);
         PatternEngine patternEngine = new PatternEngine(
                 events.stream().map(SecurityEvent::command).filter(c -> !c.isEmpty()).toList());
+        this.patternEngine = patternEngine;
         Set<String> matched = new HashSet<>();
         Map<String, List<String>> hitsByPattern = new LinkedHashMap<>();
         for (String p : patternLines) {
@@ -220,6 +224,44 @@ public final class DashboardModel {
     /** Known indicators (and prefix rules, shown with '*') that start with the typed prefix. */
     public List<String> searchIoc(String prefix) {
         return iocEngine.search(prefix == null ? "" : prefix.trim());
+    }
+
+    /** Closes the host's incident (removes it from the red-black tree). False if it has none. */
+    public boolean closeIncident(String host) {
+        requireAnalysed();
+        Integer id = incidentByHost.remove(host);
+        return id != null && incidents.close(id);
+    }
+
+    /** A snapshot of the incident red-black tree: nodes in key order with colour, depth and parent. */
+    public List<RedBlackTree.NodeView<IncidentKey, Incident>> treeView() {
+        requireAnalysed();
+        return incidents.treeView();
+    }
+
+    /** The stored segment-tree ranges combined to answer the current window for this host. */
+    public List<int[]> coveringRanges(String host) {
+        requireAnalysed();
+        return timeline.coveringRanges(host, from, to);
+    }
+
+    /** For each character typed, how many known indicators still match the prefix so far. */
+    public List<Integer> iocNarrowing(String text) {
+        String t = text == null ? "" : text.trim();
+        List<Integer> counts = new ArrayList<>();
+        for (int k = 1; k <= t.length(); k++) {
+            counts.add(searchIoc(t.substring(0, k)).size());
+        }
+        return counts;
+    }
+
+    /** Observed commands matching a wildcard pattern ('.' = one unknown character). */
+    public List<String> matchPattern(String pattern) {
+        requireAnalysed();
+        if (pattern == null || pattern.isBlank()) {
+            return List.of();
+        }
+        return patternEngine.match(pattern.trim());
     }
 
     public boolean isBalanced() {
