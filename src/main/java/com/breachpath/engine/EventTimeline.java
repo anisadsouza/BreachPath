@@ -52,6 +52,13 @@ public class EventTimeline {
         return t == null ? 0 : t.rangeMax(from, to);
     }
 
+    /** The stored ranges the segment tree combines to answer a window query for this host. */
+    public java.util.List<int[]> coveringRanges(String host, int from, int to) {
+        checkWindow(from, to);
+        SegmentTree t = trees.get(host);
+        return t == null ? java.util.List.of() : t.coveringRanges(from, to);
+    }
+
     /** Adds new alerts to one hour (a point update on the host's segment tree). */
     public void addAlerts(String host, int hour, int delta) {
         if (hour < 0 || hour >= hours) {

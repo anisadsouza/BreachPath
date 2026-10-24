@@ -64,6 +64,11 @@ public class IncidentIndex {
         return tree.size();
     }
 
+    /** A read-only snapshot of the red-black tree, for display. */
+    public List<RedBlackTree.NodeView<com.breachpath.model.IncidentKey, Incident>> treeView() {
+        return tree.inOrderView();
+    }
+
     public boolean isBalanced() {
         return tree.validate();
     }
