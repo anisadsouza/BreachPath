@@ -87,14 +87,21 @@ All files are in `data/`. Lines starting with `#` are comments.
 
     mvn javafx:run
 
-The dashboard has four tabs:
+Compromised hosts and targets are chosen from drop-downs with tick boxes, so several can be picked at
+once. Hover over a host on the map to see its type, isolation cost, risk and alert count. The
+dashboard has five tabs:
 
 - **Overview:** the network map laid out by distance from the compromised host, the highest-risk
   incidents, and an alert chart for the selected host.
 - **Investigation:** all incidents, a plain explanation of the selected score, wildcard pattern
-  hits, IOC prefix search, and a way to add new evidence and watch the incident move.
+  hits, IOC prefix search, and two actions on the selected incident: add evidence (re-scores it and
+  moves it in the tree) or close it (removes it from the tree).
 - **Containment:** the two scenarios side by side, with the cut drawn on the map, the recommended
   actions, and the verification result.
+- **Under the hood:** one panel per concept so each can be seen working. The cut costs that add up
+  to the max flow, the indicators that still match after each character typed into the trie, the
+  matches for a wildcard pattern, the stored segment-tree ranges combined for a window query, and
+  the incident red-black tree drawn with its red and black nodes.
 - **Benchmarks:** a summary of the five concepts with their correctness checks and timings, with
   the full output underneath.
 
@@ -120,9 +127,9 @@ The dashboard needs JavaFX, so use Maven for that.
 
     mvn test
 
-70 JUnit tests cover each data structure on its own, the containment planner against a
+79 JUnit tests cover each data structure on its own, the containment planner against a
 brute-force minimum cut, corner cases (disconnected graphs, uncuttable paths, equal scores, empty
-patterns, repeated updates, bad input files) and the logic behind the dashboard. The dashboard
+patterns, repeated updates, bad input files) and the logic behind the dashboard, including the read-only tree views. The dashboard
 logic lives in `ui/DashboardModel`, which has no JavaFX code, so it can be tested without a window.
 
 ## Results
