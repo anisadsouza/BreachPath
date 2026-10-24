@@ -2,8 +2,11 @@ package com.breachpath.ui;
 
 import com.breachpath.engine.Benchmarks;
 import com.breachpath.engine.ContainmentPlan;
+import com.breachpath.model.Asset;
 import com.breachpath.model.Incident;
+import com.breachpath.model.IncidentKey;
 import com.breachpath.model.Link;
+import com.breachpath.rbtree.RedBlackTree;
 import com.breachpath.model.Topology;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -22,8 +25,11 @@ import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.CustomMenuItem;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Spinner;
@@ -34,6 +40,7 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
@@ -61,6 +68,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -96,8 +104,8 @@ public final class DashboardApp extends Application {
     private boolean updatingSelection;
 
     // top bar
-    private final TextField compromisedField = new TextField("WS-Alice");
-    private final TextField targetField = new TextField("DB-PROD");
+    private final HostPicker compromisedPicker = new HostPicker();
+    private final HostPicker targetPicker = new HostPicker();
     private final Spinner<Integer> fromSpinner = new Spinner<>(0, 23, 0);
     private final Spinner<Integer> toSpinner = new Spinner<>(0, 23, 23);
     private final Label status = new Label();
@@ -120,6 +128,19 @@ public final class DashboardApp extends Application {
     private final ListView<String> iocResults = new ListView<>();
     private final Spinner<Integer> hourSpinner = new Spinner<>(0, 23, 12);
     private final Spinner<Integer> deltaSpinner = new Spinner<>(1, 500, 30);
+
+    // under the hood
+    private final VBox flowBody = new VBox(6);
+    private final TextField trieField = new TextField("update");
+    private final HBox trieChips = new HBox(8);
+    private final Label trieResult = new Label();
+    private final TextField wildField = new TextField("p.wershell");
+    private final Label wildResult = new Label();
+    private final VBox segBody = new VBox(4);
+    private final Label segSummary = new Label();
+    private final Pane rbHolder = new Pane();
+    private final Canvas rbCanvas = new Canvas(520, 240);
+    private final Label rbSummary = new Label();
 
     // containment
     private final GraphView containmentGraph = new GraphView(true);
@@ -149,6 +170,7 @@ public final class DashboardApp extends Application {
                 tab("Overview", buildOverview()),
                 tab("Investigation", buildInvestigation()),
                 tab("Containment", buildContainment()),
+                tab("Under the hood", buildInternals()),
                 tab("Benchmarks", buildBenchmarks()));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
@@ -211,10 +233,13 @@ public final class DashboardApp extends Application {
         toSpinner.setEditable(true);
         fromSpinner.setPrefWidth(74);
         toSpinner.setPrefWidth(74);
-        compromisedField.setPrefWidth(180);
-        compromisedField.setPromptText("WS-Alice,WS-Bob");
-        targetField.setPrefWidth(180);
-        targetField.setPromptText("DB-PROD,CLOUD-ADMIN");
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < model.topology().size(); i++) {
+            names.add(model.topology().asset(i).name());
+        }
+        compromisedPicker.setHosts(names, names.contains("WS-Alice") ? Set.of("WS-Alice") : Set.of(names.get(0)));
+        targetPicker.setHosts(names, names.contains("DB-PROD") ? Set.of("DB-PROD")
+                : Set.of(names.get(names.size() - 1)));
         Button run = new Button("Analyse");
         run.getStyleClass().add("primary");
         run.setDefaultButton(true);
@@ -222,8 +247,8 @@ public final class DashboardApp extends Application {
         status.setWrapText(true);
         HBox.setHgrow(status, Priority.ALWAYS);
 
-        HBox controls = new HBox(8, new Label("Compromised host"), compromisedField, new Label("Protected target"),
-                targetField, new Label("Hours"), fromSpinner, new Label("to"), toSpinner, run, status);
+        HBox controls = new HBox(8, new Label("Compromised host"), compromisedPicker.button, new Label("Protected target"),
+                targetPicker.button, new Label("Hours"), fromSpinner, new Label("to"), toSpinner, run, status);
         controls.setAlignment(Pos.CENTER_LEFT);
 
         VBox box = new VBox(10, titles, controls);
@@ -310,14 +335,16 @@ public final class DashboardApp extends Application {
         deltaSpinner.setPrefWidth(86);
         Button add = new Button("Add evidence");
         add.setOnAction(e -> addEvidence());
-        HBox evidence = new HBox(10, new Label("Hour"), hourSpinner, new Label("Extra alerts"), deltaSpinner, add);
+        Button close = new Button("Close incident");
+        close.setOnAction(e -> closeSelected());
+        HBox evidence = new HBox(10, new Label("Hour"), hourSpinner, new Label("Extra alerts"), deltaSpinner, add, close);
         evidence.setAlignment(Pos.CENTER_LEFT);
-        Label evidenceNote = muted("Adds alerts at that hour and re-scores the host.");
+        Label evidenceNote = muted("Add evidence re-scores the host. Close removes its incident from the tree; Analyse brings it back.");
         evidenceNote.setWrapText(true);
         evidenceNote.setMinHeight(Region.USE_PREF_SIZE);
 
         VBox left = new VBox(14, heading("Incidents"), table, heading("Selected incident"), explainScroll,
-                heading("Add new evidence"), new VBox(6, evidence, evidenceNote));
+                heading("Update the selected incident"), new VBox(6, evidence, evidenceNote));
         left.setPadding(new Insets(16, 10, 16, 18));
         VBox.setVgrow(explainScroll, Priority.NEVER);
 
@@ -501,7 +528,7 @@ public final class DashboardApp extends Application {
 
     private void runAnalysis() {
         try {
-            model.analyse(compromisedField.getText(), targetField.getText(),
+            model.analyse(compromisedPicker.csv(), targetPicker.csv(),
                     fromSpinner.getValue(), toSpinner.getValue());
             setStatus("Analysed. Incident tree balanced: " + model.isBalanced(), true);
             refreshAll(null);
@@ -523,6 +550,21 @@ public final class DashboardApp extends Application {
             refreshAll(selectedHost);
         } catch (IllegalArgumentException ex) {
             setStatus("Error: " + ex.getMessage(), false);
+        }
+    }
+
+    private void closeSelected() {
+        if (selectedHost == null) {
+            setStatus("Select an incident first.", false);
+            return;
+        }
+        String host = selectedHost;
+        if (model.closeIncident(host)) {
+            setStatus(String.format("Closed %s. %d incidents left (tree balanced: %s)", host,
+                    model.ranked().size(), model.isBalanced()), true);
+            refreshAll(null);
+        } else {
+            setStatus(host + " has no open incident.", false);
         }
     }
 
@@ -610,6 +652,7 @@ public final class DashboardApp extends Application {
         rebuildTriage();
         overviewGraph.redraw();
         containmentGraph.redraw();
+        refreshInternals();
     }
 
     private void updateIocResults() {
@@ -800,6 +843,284 @@ public final class DashboardApp extends Application {
         planBox.getChildren().addAll(actions, total, affected, verified, how);
     }
 
+    // ---- host picker ------------------------------------------------------------------------
+
+    /** A drop-down with a tick box per host, so hosts are chosen rather than typed. */
+    private static final class HostPicker {
+        final MenuButton button = new MenuButton();
+        private final List<CheckBox> items = new ArrayList<>();
+
+        HostPicker() {
+            button.setMinWidth(170);
+            button.setPrefWidth(170);
+        }
+
+        void setHosts(List<String> names, Set<String> selected) {
+            items.clear();
+            button.getItems().clear();
+            for (String name : names) {
+                CheckBox box = new CheckBox(name);
+                box.setSelected(selected.contains(name));
+                box.selectedProperty().addListener((o, a, b) -> updateLabel());
+                items.add(box);
+                CustomMenuItem item = new CustomMenuItem(box);
+                item.setHideOnClick(false);
+                button.getItems().add(item);
+            }
+            updateLabel();
+        }
+
+        String csv() {
+            List<String> chosen = new ArrayList<>();
+            for (CheckBox box : items) {
+                if (box.isSelected()) {
+                    chosen.add(box.getText());
+                }
+            }
+            return String.join(",", chosen);
+        }
+
+        private void updateLabel() {
+            String csv = csv();
+            int count = csv.isEmpty() ? 0 : csv.split(",").length;
+            button.setText(count == 0 ? "Choose hosts" : count <= 2 ? csv.replace(",", ", ") : count + " hosts");
+        }
+    }
+
+    // ---- tab: under the hood ----------------------------------------------------------------
+
+    private ScrollPane buildInternals() {
+        // 1. max flow / min cut
+        VBox flow = panel("Max flow / min cut",
+                "The cheapest set of links and hosts to cut costs exactly as much as the most flow that can pass.",
+                flowBody);
+
+        // 2. prefix trie
+        trieField.setPromptText("Type the start of an indicator");
+        trieField.textProperty().addListener((o, a, b) -> updateTrie());
+        trieChips.setPadding(new Insets(4, 0, 4, 0));
+        trieResult.setWrapText(true);
+        trieResult.setMinHeight(Region.USE_PREF_SIZE);
+        VBox trie = panel("Prefix trie",
+                "Every character you type follows one branch, so the indicators that still match shrink as you go.",
+                trieField, trieChips, trieResult);
+
+        // 3. wildcard word dictionary
+        wildField.setPromptText("For example p.wershell");
+        wildField.textProperty().addListener((o, a, b) -> updateWild());
+        wildResult.setWrapText(true);
+        wildResult.setMinHeight(Region.USE_PREF_SIZE);
+        VBox wild = panel("Wildcard word dictionary",
+                "A dot matches exactly one character, so the search follows every branch at that position.",
+                wildField, wildResult);
+
+        // 4. segment tree
+        segSummary.setWrapText(true);
+        segSummary.setMinHeight(Region.USE_PREF_SIZE);
+        VBox seg = panel("Segment tree",
+                "A window query combines a few stored ranges instead of reading every hour.",
+                segBody, segSummary);
+
+        // 5. red-black tree
+        rbHolder.getChildren().add(rbCanvas);
+        rbHolder.setMinSize(260, 220);
+        rbHolder.setPrefHeight(240);
+        rbCanvas.widthProperty().bind(rbHolder.widthProperty());
+        rbCanvas.heightProperty().bind(rbHolder.heightProperty());
+        rbCanvas.widthProperty().addListener(o -> drawRedBlackTree());
+        rbCanvas.heightProperty().addListener(o -> drawRedBlackTree());
+        rbSummary.setWrapText(true);
+        rbSummary.setMinHeight(Region.USE_PREF_SIZE);
+        VBox rb = panel("Red-black tree",
+                "Incidents sit in a balanced tree ordered by risk. Red and black are the tree's balancing colours, "
+                        + "not risk levels; the number in each node is the risk score.",
+                rbHolder, rbSummary);
+
+        VBox leftColumn = new VBox(14, flow, trie, wild);
+        VBox rightColumn = new VBox(14, seg, rb);
+        HBox columns = new HBox(14, leftColumn, rightColumn);
+        HBox.setHgrow(leftColumn, Priority.ALWAYS);
+        HBox.setHgrow(rightColumn, Priority.ALWAYS);
+        leftColumn.setPrefWidth(500);
+        rightColumn.setPrefWidth(560);
+        columns.setPadding(new Insets(14, 16, 16, 16));
+        ScrollPane scroll = new ScrollPane(columns);
+        scroll.setFitToWidth(true);
+        return scroll;
+    }
+
+    private static VBox panel(String title, String blurb, Node... content) {
+        Label blurbLabel = muted(blurb);
+        blurbLabel.setWrapText(true);
+        blurbLabel.setMinHeight(Region.USE_PREF_SIZE);
+        VBox box = new VBox(8, heading(title), blurbLabel);
+        box.getChildren().addAll(content);
+        box.setPadding(new Insets(12, 14, 14, 14));
+        box.setStyle("-fx-background-color: #fbfcfd; -fx-border-color: " + RULE + ";");
+        return box;
+    }
+
+    private void refreshInternals() {
+        if (model == null || !model.isAnalysed()) {
+            return;
+        }
+        updateFlowPanel();
+        updateTrie();
+        updateWild();
+        updateSegmentPanel();
+        drawRedBlackTree();
+    }
+
+    private void updateFlowPanel() {
+        flowBody.getChildren().clear();
+        for (DashboardModel.Scenario s : new DashboardModel.Scenario[]{
+                DashboardModel.Scenario.STRICT, DashboardModel.Scenario.RELAXED}) {
+            ContainmentPlan plan = model.plan(s);
+            String name = s == DashboardModel.Scenario.STRICT ? "Scenario A" : "Scenario B";
+            Label title = new Label(name);
+            font(title, bodyFont, FontWeight.BOLD, 13);
+            title.setMinWidth(86);
+            String text;
+            if (!plan.feasible()) {
+                text = "no finite cut exists";
+            } else {
+                List<String> costs = new ArrayList<>();
+                for (ContainmentPlan.Action a : plan.actions()) {
+                    costs.add(String.valueOf(a.cost()));
+                }
+                text = String.join(" + ", costs) + " = " + plan.totalCost() + "   (the cut equals the max flow)";
+            }
+            Label value = new Label(text);
+            value.setWrapText(true);
+            value.setMinHeight(Region.USE_PREF_SIZE);
+            HBox row = new HBox(10, title, value);
+            row.setAlignment(Pos.BASELINE_LEFT);
+            flowBody.getChildren().add(row);
+        }
+    }
+
+    private void updateTrie() {
+        trieChips.getChildren().clear();
+        String text = trieField.getText() == null ? "" : trieField.getText().trim();
+        trieChips.getChildren().add(chip("start", String.valueOf(model.searchIoc("").size())));
+        List<Integer> counts = model.iocNarrowing(text);
+        for (int i = 0; i < counts.size(); i++) {
+            trieChips.getChildren().add(chip(String.valueOf(text.charAt(i)), String.valueOf(counts.get(i))));
+        }
+        List<String> found = model.searchIoc(text);
+        trieResult.setText(text.isEmpty() ? "Type a prefix, for example update or 203.0."
+                : found.isEmpty() ? "No known indicator starts with that."
+                : found.size() + (found.size() == 1 ? " match: " : " matches: ") + String.join(", ", found));
+    }
+
+    private VBox chip(String top, String count) {
+        Label t = new Label(top);
+        font(t, monoFont, FontWeight.NORMAL, 15);
+        t.setMinWidth(34);
+        t.setAlignment(Pos.CENTER);
+        t.setStyle(t.getStyle() + "-fx-border-color: " + RULE + "; -fx-background-color: #ffffff; -fx-padding: 3 4 3 4;");
+        Label c = new Label(count);
+        font(c, numberFont, FontWeight.BOLD, 14);
+        VBox box = new VBox(2, t, c);
+        box.setAlignment(Pos.CENTER);
+        return box;
+    }
+
+    private void updateWild() {
+        List<String> matches = model.matchPattern(wildField.getText());
+        String text = wildField.getText() == null ? "" : wildField.getText().trim();
+        wildResult.setText(text.isEmpty() ? "Type a pattern. A dot is any one character."
+                : matches.isEmpty() ? "No observed command matches " + text + "."
+                : text + " matches: " + String.join(", ", matches));
+    }
+
+    private void updateSegmentPanel() {
+        segBody.getChildren().clear();
+        if (selectedHost == null) {
+            segSummary.setText("Select an incident to see its alert ranges.");
+            return;
+        }
+        List<int[]> ranges = model.coveringRanges(selectedHost);
+        Label head = muted(selectedHost + ", hours " + model.from() + " to " + model.to());
+        segBody.getChildren().add(head);
+        int total = 0;
+        int peak = 0;
+        for (int[] r : ranges) {
+            Label span = new Label(r[0] == r[1] ? "hour " + r[0] : "hours " + r[0] + " to " + r[1]);
+            span.setMinWidth(130);
+            Label vals = new Label("sum " + r[2] + ", max " + r[3]);
+            font(vals, numberFont, FontWeight.BOLD, 13);
+            HBox row = new HBox(10, span, vals);
+            row.setPadding(new Insets(3, 0, 3, 0));
+            row.setStyle("-fx-border-color: transparent transparent #e3e7ec transparent;");
+            segBody.getChildren().add(row);
+            total += r[2];
+            peak = Math.max(peak, r[3]);
+        }
+        int hoursInWindow = model.to() - model.from() + 1;
+        segSummary.setText("Combined: " + total + " alerts, at most " + peak + " in one hour, from "
+                + ranges.size() + (ranges.size() == 1 ? " stored range" : " stored ranges")
+                + ". A plain scan would read " + hoursInWindow + (hoursInWindow == 1 ? " hour." : " hours.")
+                + (ranges.size() == 1 && hoursInWindow > 1
+                ? " The whole window fits one stored range; narrow the hours at the top to see several." : ""));
+    }
+
+    private void drawRedBlackTree() {
+        GraphicsContext g = rbCanvas.getGraphicsContext2D();
+        double w = rbCanvas.getWidth();
+        double h = rbCanvas.getHeight();
+        g.clearRect(0, 0, w, h);
+        if (model == null || !model.isAnalysed()) {
+            return;
+        }
+        List<RedBlackTree.NodeView<IncidentKey, Incident>> view = model.treeView();
+        if (view.isEmpty()) {
+            g.setFill(Color.web(MUTED));
+            g.setTextAlign(TextAlignment.CENTER);
+            g.setFont(Font.font(bodyFont, FontWeight.NORMAL, 13));
+            g.fillText("The tree is empty: every incident is closed.", w / 2, h / 2);
+            rbSummary.setText("0 incidents.");
+            return;
+        }
+        int n = view.size();
+        int maxDepth = 0;
+        for (RedBlackTree.NodeView<IncidentKey, Incident> v : view) {
+            maxDepth = Math.max(maxDepth, v.depth());
+        }
+        double pad = 26;
+        double[] x = new double[n];
+        double[] y = new double[n];
+        for (int i = 0; i < n; i++) {
+            x[i] = n == 1 ? w / 2 : pad + i * (w - 2 * pad) / (n - 1);
+            y[i] = maxDepth == 0 ? h / 2 : pad + view.get(i).depth() * (h - 2 * pad) / maxDepth;
+        }
+        g.setStroke(Color.web("#aab5c1"));
+        g.setLineWidth(1.5);
+        for (int i = 0; i < n; i++) {
+            int parent = view.get(i).parent();
+            if (parent >= 0) {
+                g.strokeLine(x[i], y[i], x[parent], y[parent]);
+            }
+        }
+        g.setTextAlign(TextAlignment.CENTER);
+        g.setFont(Font.font(numberFont, FontWeight.BOLD, 12));
+        for (int i = 0; i < n; i++) {
+            RedBlackTree.NodeView<IncidentKey, Incident> v = view.get(i);
+            boolean selected = v.value().host().equals(selectedHost);
+            g.setFill(Color.web(v.red() ? "#c62828" : INK));
+            g.fillOval(x[i] - 15, y[i] - 15, 30, 30);
+            if (selected) {
+                g.setStroke(Color.web(TARGET));
+                g.setLineWidth(3);
+                g.strokeOval(x[i] - 19, y[i] - 19, 38, 38);
+            }
+            g.setFill(Color.WHITE);
+            g.fillText(String.valueOf(v.value().riskScore()), x[i], y[i] + 4);
+        }
+        rbSummary.setText(n + (n == 1 ? " incident" : " incidents") + ", height " + (maxDepth + 1)
+                + ", balanced: " + model.isBalanced() + ". The circled node is the selected incident.");
+    }
+
     // ---- shared helpers ---------------------------------------------------------------------
 
 
@@ -892,6 +1213,7 @@ public final class DashboardApp extends Application {
         final Pane holder = new Pane(canvas);
         final boolean showCut;
         DashboardModel.Scenario scenario = DashboardModel.Scenario.NONE;
+        private final Tooltip tip = new Tooltip();
         private boolean hasUnreachable;
         private double[] nx = new double[0];
         private double[] ny = new double[0];
@@ -905,6 +1227,27 @@ public final class DashboardApp extends Application {
             canvas.widthProperty().addListener(o -> redraw());
             canvas.heightProperty().addListener(o -> redraw());
             canvas.setOnMouseClicked(e -> pick(e.getX(), e.getY()));
+            canvas.setOnMouseMoved(e -> hover(e.getX(), e.getY(), e.getScreenX(), e.getScreenY()));
+            canvas.setOnMouseExited(e -> tip.hide());
+            tip.setStyle("-fx-font-family: '" + bodyFont + "'; -fx-font-size: 12px;");
+        }
+
+        private void hover(double x, double y, double screenX, double screenY) {
+            for (int i = 0; i < nx.length; i++) {
+                if (Math.hypot(x - nx[i], y - ny[i]) <= NODE_R + 4) {
+                    Asset a = model.topology().asset(i);
+                    Incident inc = model.incidentFor(a.name());
+                    tip.setText(a.name() + "\n" + a.type() + ", isolation cost " + a.isolationCost() + "\n"
+                            + (inc == null ? "No open incident"
+                            : "Risk " + inc.riskScore() + " (" + level(inc.riskScore()) + ")")
+                            + "\nAlerts in window: " + model.windowTotal(a.name()));
+                    canvas.setCursor(Cursor.HAND);
+                    tip.show(canvas, screenX + 14, screenY + 14);
+                    return;
+                }
+            }
+            canvas.setCursor(Cursor.DEFAULT);
+            tip.hide();
         }
 
         private void pick(double x, double y) {
