@@ -264,6 +264,62 @@ public final class DashboardModel {
         return patternEngine.match(pattern.trim());
     }
 
+    /**
+     * One row of the what-if sweep: if this host were the only compromised one, how far is it from
+     * the targets and what would the cheapest containment cost?
+     *
+     * @param hops      steps along the shortest attack path (0 when the host cannot reach a target)
+     * @param feasibleA false when an uncuttable link makes containment impossible without isolating it
+     * @param costA     cheapest cut when the compromised host must stay online (Scenario A)
+     * @param costB     cheapest cut when the compromised host itself may be isolated (Scenario B)
+     */
+    public record WhatIfRow(String host, String type, boolean reaches, int hops,
+                            boolean feasibleA, int costA, boolean feasibleB, int costB) {
+    }
+
+    /**
+     * Treats every non-target host in turn as the only compromised host. Hosts that can reach a
+     * target come first, hardest to contain (highest cost) first, then nearest first.
+     */
+    public List<WhatIfRow> whatIf() {
+        requireAnalysed();
+        ContainmentPlanner planner = new ContainmentPlanner();
+        List<WhatIfRow> rows = new ArrayList<>();
+        for (int i = 0; i < topology.size(); i++) {
+            if (targets.contains(i)) {
+                continue;
+            }
+            int best = Integer.MAX_VALUE;
+            for (int t : targets) {
+                List<Integer> path = AttackPaths.shortestPath(topology, i, t);
+                if (!path.isEmpty()) {
+                    best = Math.min(best, path.size() - 1);
+                }
+            }
+            boolean reaches = best != Integer.MAX_VALUE;
+            ContainmentPlan a = planner.plan(topology, List.of(i), targets, false, new EdmondsKarp());
+            ContainmentPlan b = planner.plan(topology, List.of(i), targets, true, new EdmondsKarp());
+            rows.add(new WhatIfRow(topology.asset(i).name(), topology.asset(i).type(), reaches,
+                    reaches ? best : 0, a.feasible(), a.feasible() ? a.totalCost() : 0,
+                    b.feasible(), b.feasible() ? b.totalCost() : 0));
+        }
+        rows.sort((x, y) -> {
+            if (x.reaches() != y.reaches()) {
+                return x.reaches() ? -1 : 1;
+            }
+            int cx = x.feasibleA() ? x.costA() : Integer.MAX_VALUE;
+            int cy = y.feasibleA() ? y.costA() : Integer.MAX_VALUE;
+            if (cx != cy) {
+                return Integer.compare(cy, cx);
+            }
+            if (x.hops() != y.hops()) {
+                return Integer.compare(x.hops(), y.hops());
+            }
+            return x.host().compareTo(y.host());
+        });
+        return rows;
+    }
+
     public boolean isBalanced() {
         requireAnalysed();
         return incidents.isBalanced();

@@ -129,6 +129,10 @@ public final class DashboardApp extends Application {
     private final Spinner<Integer> hourSpinner = new Spinner<>(0, 23, 12);
     private final Spinner<Integer> deltaSpinner = new Spinner<>(1, 500, 30);
 
+    // what-if
+    private final TableView<DashboardModel.WhatIfRow> whatIfTable = new TableView<>();
+    private final Label whatIfSummary = new Label();
+
     // under the hood
     private final VBox flowBody = new VBox(6);
     private final TextField trieField = new TextField("update");
@@ -170,6 +174,7 @@ public final class DashboardApp extends Application {
                 tab("Overview", buildOverview()),
                 tab("Investigation", buildInvestigation()),
                 tab("Containment", buildContainment()),
+                tab("What-if", buildWhatIf()),
                 tab("Under the hood", buildInternals()),
                 tab("Benchmarks", buildBenchmarks()));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -609,7 +614,7 @@ public final class DashboardApp extends Application {
         containmentGraph.scenario = shown;
         fillPlan(shown);
 
-
+        updateWhatIf();
         refreshSelectionViews();
     }
 
@@ -870,6 +875,12 @@ public final class DashboardApp extends Application {
             updateLabel();
         }
 
+        void setSelected(Set<String> names) {
+            for (CheckBox box : items) {
+                box.setSelected(names.contains(box.getText()));
+            }
+        }
+
         String csv() {
             List<String> chosen = new ArrayList<>();
             for (CheckBox box : items) {
@@ -885,6 +896,99 @@ public final class DashboardApp extends Application {
             int count = csv.isEmpty() ? 0 : csv.split(",").length;
             button.setText(count == 0 ? "Choose hosts" : count <= 2 ? csv.replace(",", ", ") : count + " hosts");
         }
+    }
+
+    // ---- tab: what-if -----------------------------------------------------------------------
+
+    private BorderPane buildWhatIf() {
+        whatIfSummary.setWrapText(true);
+        whatIfSummary.setMinHeight(Region.USE_PREF_SIZE);
+        font(whatIfSummary, bodyFont, FontWeight.BOLD, 14);
+
+        TableColumn<DashboardModel.WhatIfRow, String> hostCol = new TableColumn<>("If this host is compromised");
+        hostCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(c.getValue().host()));
+        hostCol.setMinWidth(170);
+        TableColumn<DashboardModel.WhatIfRow, String> typeCol = new TableColumn<>("Type");
+        typeCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(c.getValue().type()));
+        typeCol.setMinWidth(90);
+        TableColumn<DashboardModel.WhatIfRow, String> hopsCol = new TableColumn<>("Steps to target");
+        hopsCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(
+                c.getValue().reaches() ? String.valueOf(c.getValue().hops()) : "cannot reach"));
+        hopsCol.setMinWidth(120);
+        TableColumn<DashboardModel.WhatIfRow, String> costACol = new TableColumn<>("Cost to contain, A");
+        costACol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(whatIfCost(c.getValue(), false)));
+        costACol.setMinWidth(150);
+        TableColumn<DashboardModel.WhatIfRow, String> costBCol = new TableColumn<>("Cost to contain, B");
+        costBCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(whatIfCost(c.getValue(), true)));
+        costBCol.setMinWidth(150);
+        whatIfTable.getColumns().add(hostCol);
+        whatIfTable.getColumns().add(typeCol);
+        whatIfTable.getColumns().add(hopsCol);
+        whatIfTable.getColumns().add(costACol);
+        whatIfTable.getColumns().add(costBCol);
+        whatIfTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+        Button use = new Button("Use as the compromised host");
+        use.setOnAction(e -> {
+            DashboardModel.WhatIfRow row = whatIfTable.getSelectionModel().getSelectedItem();
+            if (row == null) {
+                setStatus("Select a host in the table first.", false);
+                return;
+            }
+            compromisedPicker.setSelected(Set.of(row.host()));
+            runAnalysis();
+        });
+        Label how = muted("Each host is treated as the only compromised one. Scenario A keeps that host online; "
+                + "Scenario B allows isolating it. Hosts that cost most to contain, and sit fewest steps "
+                + "from the target, are the ones to patch or segment first.");
+        how.setWrapText(true);
+        how.setMinHeight(Region.USE_PREF_SIZE);
+
+        VBox top = new VBox(8, heading("What if one host were compromised?"), how, whatIfSummary);
+        top.setPadding(new Insets(16, 18, 10, 18));
+        VBox bottom = new VBox(8, use, muted("The button re-runs the analysis with that host as the compromised one."));
+        bottom.setPadding(new Insets(10, 18, 16, 18));
+        BorderPane.setMargin(whatIfTable, new Insets(0, 18, 0, 18));
+
+        BorderPane pane = new BorderPane();
+        pane.setTop(top);
+        pane.setCenter(whatIfTable);
+        pane.setBottom(bottom);
+        return pane;
+    }
+
+    private static String whatIfCost(DashboardModel.WhatIfRow row, boolean isolationAllowed) {
+        if (!row.reaches()) {
+            return "none needed";
+        }
+        boolean feasible = isolationAllowed ? row.feasibleB() : row.feasibleA();
+        int cost = isolationAllowed ? row.costB() : row.costA();
+        return feasible ? String.valueOf(cost) : "cannot be cut";
+    }
+
+    private void updateWhatIf() {
+        List<DashboardModel.WhatIfRow> rows = model.whatIf();
+        whatIfTable.setItems(FXCollections.observableArrayList(rows));
+        List<DashboardModel.WhatIfRow> reaching = new ArrayList<>();
+        for (DashboardModel.WhatIfRow r : rows) {
+            if (r.reaches()) {
+                reaching.add(r);
+            }
+        }
+        if (reaching.isEmpty()) {
+            whatIfSummary.setText("No other host can reach the target.");
+            return;
+        }
+        DashboardModel.WhatIfRow hardest = reaching.get(0);
+        DashboardModel.WhatIfRow nearest = reaching.get(0);
+        for (DashboardModel.WhatIfRow r : reaching) {
+            if (r.hops() < nearest.hops()) {
+                nearest = r;
+            }
+        }
+        whatIfSummary.setText(reaching.size() + " of " + rows.size() + " other hosts can reach the target. "
+                + "Hardest to contain: " + hardest.host() + " (cost " + whatIfCost(hardest, false) + "). "
+                + "Nearest: " + nearest.host() + " (" + nearest.hops() + (nearest.hops() == 1 ? " step)." : " steps)."));
     }
 
     // ---- tab: under the hood ----------------------------------------------------------------
