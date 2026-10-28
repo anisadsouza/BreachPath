@@ -53,12 +53,15 @@ class DashboardWhatIfTest {
     }
 
     @Test
-    void hardestToContainComesFirst() throws IOException {
+    void exposedAndUnpatchedHostsComeFirstThenHardestToContain() throws IOException {
         List<WhatIfRow> rows = sample("WS-Alice", "DB-PROD").whatIf();
-        for (int i = 1; i < rows.size(); i++) {
+        assertEquals("WEB-01", rows.get(0).host());
+        assertTrue(rows.get(0).exposedAndUnpatched());
+        assertEquals("APP-01", rows.get(1).host());
+        for (int i = 2; i < rows.size(); i++) {
+            assertFalse(rows.get(i).exposedAndUnpatched());
             assertTrue(rows.get(i - 1).costA() >= rows.get(i).costA());
         }
-        assertEquals("APP-01", rows.get(0).host());
     }
 
     @Test

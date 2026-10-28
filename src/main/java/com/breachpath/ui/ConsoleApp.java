@@ -131,7 +131,7 @@ public final class ConsoleApp {
                 System.out.println("Skipping unknown host in log: " + host);
                 continue;
             }
-            RiskAssessment ra = assess(host, timeline, evidence, reaching, scorer);
+            RiskAssessment ra = assess(host, topo, timeline, evidence, reaching, scorer);
             incidents.open(host, ra.score(), ra.reasons());
         }
         System.out.printf("%d incidents opened, tree balanced: %s%n", incidents.size(), incidents.isBalanced());
@@ -140,7 +140,7 @@ public final class ConsoleApp {
         List<Incident> all = incidents.top(incidents.size());
         Incident lowest = all.get(all.size() - 1);
         timeline.addAlerts(lowest.host(), 12, 30);
-        RiskAssessment updated = assess(lowest.host(), timeline, evidence, reaching, scorer);
+        RiskAssessment updated = assess(lowest.host(), topo, timeline, evidence, reaching, scorer);
         incidents.updateScore(lowest.id(), updated.score(), "new evidence: +30 alerts at hour 12");
         int rank = 1;
         for (Incident i : incidents.top(incidents.size())) {
@@ -180,11 +180,14 @@ public final class ConsoleApp {
         }
     }
 
-    private static RiskAssessment assess(String host, EventTimeline timeline, Map<String, HostEvidence> evidence,
-                                         Set<String> reaching, RiskScorer scorer) {
+    private static RiskAssessment assess(String host, Topology topo, EventTimeline timeline,
+                                         Map<String, HostEvidence> evidence, Set<String> reaching,
+                                         RiskScorer scorer) {
         HostEvidence ev = evidence.getOrDefault(host, HostEvidence.empty(host));
+        var asset = topo.asset(topo.indexOf(host));
         return scorer.score(host, WINDOW_FROM, WINDOW_TO, timeline,
-                ev.iocs().size(), ev.commands().size(), reaching.contains(host));
+                ev.iocs().size(), ev.commands().size(), reaching.contains(host),
+                asset.internetFacing(), asset.patched());
     }
 
     private static void printTop(IncidentIndex incidents, int k) {

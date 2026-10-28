@@ -11,6 +11,7 @@ import com.breachpath.engine.PatternEngine;
 import com.breachpath.engine.RiskAssessment;
 import com.breachpath.engine.RiskScorer;
 import com.breachpath.graph.EdmondsKarp;
+import com.breachpath.model.Asset;
 import com.breachpath.model.Incident;
 import com.breachpath.model.IncidentKey;
 import com.breachpath.model.SecurityEvent;
@@ -181,8 +182,9 @@ public final class DashboardModel {
 
     private RiskAssessment assess(String host) {
         HostEvidence ev = evidence.getOrDefault(host, HostEvidence.empty(host));
+        Asset asset = topology.asset(topology.indexOf(host));
         return scorer.score(host, from, to, timeline, ev.iocs().size(), ev.commands().size(),
-                reaching.contains(host));
+                reaching.contains(host), asset.internetFacing(), asset.patched());
     }
 
     // ---- read access for the UI -------------------------------------------------------------
@@ -273,13 +275,19 @@ public final class DashboardModel {
      * @param costA     cheapest cut when the compromised host must stay online (Scenario A)
      * @param costB     cheapest cut when the compromised host itself may be isolated (Scenario B)
      */
-    public record WhatIfRow(String host, String type, boolean reaches, int hops,
+    public record WhatIfRow(String host, String type, boolean internetFacing, boolean patched,
+                            boolean reaches, int hops,
                             boolean feasibleA, int costA, boolean feasibleB, int costB) {
+        /** Internet-facing and unpatched: the first hosts to fix. */
+        public boolean exposedAndUnpatched() {
+            return internetFacing && !patched;
+        }
     }
 
     /**
      * Treats every non-target host in turn as the only compromised host. Hosts that can reach a
-     * target come first, hardest to contain (highest cost) first, then nearest first.
+     * target come first; among those, internet-facing unpatched hosts, then the hardest to contain
+     * (highest cost), then the nearest.
      */
     public List<WhatIfRow> whatIf() {
         requireAnalysed();
@@ -299,13 +307,17 @@ public final class DashboardModel {
             boolean reaches = best != Integer.MAX_VALUE;
             ContainmentPlan a = planner.plan(topology, List.of(i), targets, false, new EdmondsKarp());
             ContainmentPlan b = planner.plan(topology, List.of(i), targets, true, new EdmondsKarp());
-            rows.add(new WhatIfRow(topology.asset(i).name(), topology.asset(i).type(), reaches,
+            Asset asset = topology.asset(i);
+            rows.add(new WhatIfRow(asset.name(), asset.type(), asset.internetFacing(), asset.patched(), reaches,
                     reaches ? best : 0, a.feasible(), a.feasible() ? a.totalCost() : 0,
                     b.feasible(), b.feasible() ? b.totalCost() : 0));
         }
         rows.sort((x, y) -> {
             if (x.reaches() != y.reaches()) {
                 return x.reaches() ? -1 : 1;
+            }
+            if (x.exposedAndUnpatched() != y.exposedAndUnpatched()) {
+                return x.exposedAndUnpatched() ? -1 : 1;
             }
             int cx = x.feasibleA() ? x.costA() : Integer.MAX_VALUE;
             int cy = y.feasibleA() ? y.costA() : Integer.MAX_VALUE;
