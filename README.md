@@ -52,6 +52,8 @@ The score is capped at 100 and every point can be traced to a rule:
 | Known IOC hits | 20 each, up to 30 |
 | Suspicious command patterns | 15 each, up to 20 |
 | Can reach a protected target | 10 |
+| Internet-facing and unpatched | 15 |
+| Unpatched but internal | 5 |
 
 Priority labels: 80 and above is Critical, 60 to 79 High, 30 to 59 Medium, below 30 Low.
 
@@ -70,7 +72,7 @@ All files are in `data/`. Lines starting with `#` are comments.
 
 | File | Columns or format |
 |---|---|
-| `assets.csv` | `name,type,isolationCost` |
+| `assets.csv` | `name,type,isolationCost[,internetFacing,patched]` (the last two are optional and take true or false; a row without them is internal and patched) |
 | `network_edges.csv` | `from,to,cost,bidirectional` |
 | `security_events.csv` | `hour,host,eventType,count,indicator,command` (`-` means none; hour is 0 to 23) |
 | `iocs.txt` | one exact indicator per line; a trailing `*` makes it a prefix rule |
@@ -99,8 +101,9 @@ dashboard has six tabs:
 - **Containment:** the two scenarios side by side, with the cut drawn on the map, the recommended
   actions, and the verification result.
 - **What-if:** treats every other host in turn as the only compromised one and shows how many
-  steps it is from the target and what the cheapest containment would cost in each scenario. The
-  hosts that are nearest the target and costliest to contain are the ones to patch or segment first.
+  steps it is from the target and what the cheapest containment would cost in each scenario.
+  Internet-facing hosts that are unpatched come first, then the hosts costliest to contain: those
+  are the ones to patch or segment first.
 - **Under the hood:** one panel per concept so each can be seen working. The cut costs that add up
   to the max flow, the indicators that still match after each character typed into the trie, the
   matches for a wildcard pattern, the stored segment-tree ranges combined for a window query, and
@@ -130,29 +133,30 @@ The dashboard needs JavaFX, so use Maven for that.
 
     mvn test
 
-87 JUnit tests cover each data structure on its own, the containment planner against a
+104 JUnit tests cover each data structure on its own, the containment planner against a
 brute-force minimum cut, corner cases (disconnected graphs, uncuttable paths, equal scores, empty
 patterns, repeated updates, bad input files) and the logic behind the dashboard, including the read-only tree views and the what-if sweep. The dashboard
 logic lives in `ui/DashboardModel`, which has no JavaFX code, so it can be tested without a window.
 
 ## Results
 
-An example run on the author's laptop (single run on generated data; timings change from run to
-run, so use the Benchmarks tab to produce your own):
+Example results on generated data. Each time is the median of 5 runs after one warm-up run. These
+were measured in a Linux container, so absolute times on a laptop will differ; the speed-ups are the
+point. Use the Benchmarks tab to produce your own numbers.
 
 | Concept | Correctness check | Result |
 |---|---|---|
-| Max flow / min cut | matches brute force on 200 random graphs, 0 mismatches | Edmonds-Karp on 400 nodes and 2,396 edges: 2.47 ms |
-| Prefix trie | same results as a linear scan | 3.03 ms vs 247.22 ms (about 82 times faster) |
-| Wildcard dictionary | same matches as a naive scan | 2.53 ms vs 92.47 ms (about 37 times faster) |
-| Segment tree | same answers as a naive scan | 14.09 ms vs 1038.07 ms (about 74 times faster) |
-| Red-black tree | invariants hold and contents match `TreeMap` | 100,000 inserts and 50,000 removals in about 93 ms, height 20 (log2 n = 16.6) |
+| Max flow / min cut | matches brute force on 200 random graphs, 0 mismatches | Edmonds-Karp on 400 nodes and 2,396 edges: 10.85 ms |
+| Prefix trie | same results as a linear scan | 4.34 ms vs 477.90 ms (about 110 times faster) |
+| Wildcard dictionary | same matches as a naive scan | 4.44 ms vs 134.56 ms (about 30 times faster) |
+| Segment tree | same answers as a naive scan | 14.69 ms vs 1040.30 ms (about 71 times faster) |
+| Red-black tree | invariants hold and contents match `TreeMap` | 100,000 inserts in 44.24 ms and 50,000 removals in 26.16 ms, height 20 (log2 n = 16.6) |
 
 ## Limitations
 
 - The network, the alerts and the costs are synthetic. The recommended cuts are the cheapest under
   the costs in `data/`, and say nothing about a real network.
-- Each benchmark is a single run without JVM warm-up, so small differences are noise.
+- Benchmark times are medians of 5 runs on one machine, so differences of a few percent are noise.
 - Wildcard matching supports `.` only, and indicator matching is by exact string or prefix.
 - Alerts are counted per hour (0 to 23), and the risk weights are simple, hand-chosen rules.
 
