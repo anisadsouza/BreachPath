@@ -23,11 +23,17 @@ public final class DataLoader {
     public static Topology loadTopology(Path assetsCsv, Path edgesCsv) throws IOException {
         List<Asset> assets = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        for (String[] f : readCsv(assetsCsv, 3)) {
+        for (String[] f : readCsv(assetsCsv, 3, 5)) {
+            if (f.length == 4) {
+                throw new IllegalArgumentException(assetsCsv.getFileName() + ": asset " + f[0]
+                        + " needs 3 columns, or 5 with internetFacing and patched");
+            }
             if (!seen.add(f[0])) {
                 throw new IllegalArgumentException("Duplicate asset: " + f[0]);
             }
-            assets.add(new Asset(f[0], f[1], Integer.parseInt(f[2])));
+            boolean internetFacing = f.length == 5 && flag(f[3], "internetFacing", f[0]);
+            boolean patched = f.length != 5 || flag(f[4], "patched", f[0]);
+            assets.add(new Asset(f[0], f[1], Integer.parseInt(f[2]), internetFacing, patched));
         }
         Map<String, Integer> idx = new HashMap<>();
         for (int i = 0; i < assets.size(); i++) {
@@ -67,12 +73,36 @@ public final class DataLoader {
         return out;
     }
 
+    /** Accepts true/false, yes/no, y/n and 1/0 in any case. */
+    private static boolean flag(String text, String column, String asset) {
+        switch (text.toLowerCase(java.util.Locale.ROOT)) {
+            case "true":
+            case "yes":
+            case "y":
+            case "1":
+                return true;
+            case "false":
+            case "no":
+            case "n":
+            case "0":
+                return false;
+            default:
+                throw new IllegalArgumentException("Asset " + asset + ": " + column
+                        + " must be true or false but was '" + text + "'");
+        }
+    }
+
     private static String dash(String s) {
         return s.equals("-") ? "" : s;
     }
 
     /** Reads a CSV with a header row; every data row must have exactly {@code columns} fields. */
     private static List<String[]> readCsv(Path path, int columns) throws IOException {
+        return readCsv(path, columns, columns);
+    }
+
+    /** Like {@link #readCsv(Path, int)} but accepts anywhere from minColumns to maxColumns fields per row. */
+    private static List<String[]> readCsv(Path path, int minColumns, int maxColumns) throws IOException {
         List<String[]> rows = new ArrayList<>();
         List<String> lines = Files.readAllLines(path);
         for (int i = 1; i < lines.size(); i++) {
@@ -81,9 +111,10 @@ public final class DataLoader {
                 continue;
             }
             String[] parts = line.split(",", -1);
-            if (parts.length != columns) {
+            if (parts.length < minColumns || parts.length > maxColumns) {
                 throw new IllegalArgumentException(path.getFileName() + " line " + (i + 1)
-                        + ": expected " + columns + " columns but found " + parts.length);
+                        + ": expected " + (minColumns == maxColumns ? String.valueOf(minColumns)
+                        : minColumns + " to " + maxColumns) + " columns but found " + parts.length);
             }
             for (int j = 0; j < parts.length; j++) {
                 parts[j] = parts[j].trim();

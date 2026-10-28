@@ -10,18 +10,51 @@ import com.breachpath.trie.Trie;
 import com.breachpath.trie.WordDictionary;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.TreeMap;
 
-/** Correctness checks and timing experiments on synthetic data (fixed seeds, so repeatable). */
+/**
+ * Correctness checks and timing experiments on synthetic data (fixed seeds, so repeatable).
+ * Every time is the median of {@link #RUNS} runs after one warm-up run, so one slow run does not
+ * distort the result.
+ */
 public final class Benchmarks {
+    /** Timed runs behind each reported time. */
+    public static final int RUNS = 5;
+
     private Benchmarks() {
     }
 
+    /** Median of the values: the middle one, or the average of the two middle ones. */
+    public static double median(double[] values) {
+        if (values.length == 0) {
+            throw new IllegalArgumentException("no values");
+        }
+        double[] sorted = values.clone();
+        Arrays.sort(sorted);
+        int n = sorted.length;
+        return n % 2 == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0;
+    }
+
+    /** Runs the task once to warm up the JVM, then {@link #RUNS} timed times; returns the median in ms. */
+    private static double medianMs(Runnable task) {
+        task.run();
+        double[] times = new double[RUNS];
+        for (int i = 0; i < RUNS; i++) {
+            long start = System.nanoTime();
+            task.run();
+            times[i] = ms(System.nanoTime() - start);
+        }
+        return median(times);
+    }
+
     public static void runAll() {
+        System.out.println("Each time is the median of " + RUNS + " runs after one warm-up run.");
+        System.out.println();
         validateFlows();
         benchFlows();
         benchTrie();
@@ -77,8 +110,10 @@ public final class Benchmarks {
             for (int i = 0; i + 1 < n; i++) {
                 net.addEdge(i, i + 1, 50);
             }
-            MaxFlowResult a = new EdmondsKarp().compute(net, 0, n - 1);
-            System.out.printf("%-8d %-8d %-10d %.2f%n", n, net.edges().size(), a.maxFlow(), ms(a.nanos()));
+            final int sink = n - 1;
+            MaxFlowResult[] last = new MaxFlowResult[1];
+            double median = medianMs(() -> last[0] = new EdmondsKarp().compute(net, 0, sink));
+            System.out.printf("%-8d %-8d %-10d %.2f%n", n, net.edges().size(), last[0].maxFlow(), median);
         }
         System.out.println();
     }
@@ -110,25 +145,28 @@ public final class Benchmarks {
         for (int i = 0; i < 500; i++) {
             prefixes.add(words.get(rnd.nextInt(words.size())).substring(0, 4));
         }
-        long t0 = System.nanoTime();
-        long trieHits = 0;
-        for (String p : prefixes) {
-            trieHits += trie.wordsWithPrefix(p).size();
-        }
-        long trieNanos = System.nanoTime() - t0;
-
-        t0 = System.nanoTime();
-        long scanHits = 0;
-        for (String p : prefixes) {
-            for (String w : words) {
-                if (w.startsWith(p)) {
-                    scanHits++;
+        long[] trieHits = new long[1];
+        double trieMs = medianMs(() -> {
+            long hits = 0;
+            for (String p : prefixes) {
+                hits += trie.wordsWithPrefix(p).size();
+            }
+            trieHits[0] = hits;
+        });
+        long[] scanHits = new long[1];
+        double scanMs = medianMs(() -> {
+            long hits = 0;
+            for (String p : prefixes) {
+                for (String w : words) {
+                    if (w.startsWith(p)) {
+                        hits++;
+                    }
                 }
             }
-        }
-        long scanNanos = System.nanoTime() - t0;
+            scanHits[0] = hits;
+        });
         System.out.printf("trie: %.2f ms   linear scan: %.2f ms   results match: %s%n%n",
-                ms(trieNanos), ms(scanNanos), trieHits == scanHits);
+                trieMs, scanMs, trieHits[0] == scanHits[0]);
     }
 
     private static boolean matches(String word, String pattern) {
@@ -161,25 +199,28 @@ public final class Benchmarks {
             c[rnd.nextInt(c.length)] = '.';
             patterns.add(new String(c));
         }
-        long t0 = System.nanoTime();
-        long dictHits = 0;
-        for (String p : patterns) {
-            dictHits += dict.findAll(p).size();
-        }
-        long dictNanos = System.nanoTime() - t0;
-
-        t0 = System.nanoTime();
-        long scanHits = 0;
-        for (String p : patterns) {
-            for (String w : words) {
-                if (matches(w, p)) {
-                    scanHits++;
+        long[] dictHits = new long[1];
+        double dictMs = medianMs(() -> {
+            long hits = 0;
+            for (String p : patterns) {
+                hits += dict.findAll(p).size();
+            }
+            dictHits[0] = hits;
+        });
+        long[] scanHits = new long[1];
+        double scanMs = medianMs(() -> {
+            long hits = 0;
+            for (String p : patterns) {
+                for (String w : words) {
+                    if (matches(w, p)) {
+                        hits++;
+                    }
                 }
             }
-        }
-        long scanNanos = System.nanoTime() - t0;
+            scanHits[0] = hits;
+        });
         System.out.printf("dictionary: %.2f ms   naive scan: %.2f ms   results match: %s%n%n",
-                ms(dictNanos), ms(scanNanos), dictHits == scanHits);
+                dictMs, scanMs, dictHits[0] == scanHits[0]);
     }
 
     // ------------------------------------------------------------------ segment tree
@@ -192,11 +233,11 @@ public final class Benchmarks {
         for (int i = 0; i < n; i++) {
             data[i] = rnd.nextInt(101);
         }
-        SegmentTree tree = new SegmentTree(data);
+        SegmentTree segTree = new SegmentTree(data);
         for (int i = 0; i < 10_000; i++) {
             int idx = rnd.nextInt(n);
             int val = rnd.nextInt(101);
-            tree.update(idx, val);
+            segTree.update(idx, val);
             data[idx] = val;
         }
         int q = 20_000;
@@ -207,31 +248,36 @@ public final class Benchmarks {
             ranges[i][0] = Math.min(a, b);
             ranges[i][1] = Math.max(a, b);
         }
-        long t0 = System.nanoTime();
-        long treeSum = 0;
-        long treeMax = 0;
-        for (int[] r : ranges) {
-            treeSum += tree.rangeSum(r[0], r[1]);
-            treeMax += tree.rangeMax(r[0], r[1]);
-        }
-        long treeNanos = System.nanoTime() - t0;
-
-        t0 = System.nanoTime();
-        long naiveSum = 0;
-        long naiveMax = 0;
-        for (int[] r : ranges) {
-            int s = 0;
-            int m = Integer.MIN_VALUE;
-            for (int i = r[0]; i <= r[1]; i++) {
-                s += data[i];
-                m = Math.max(m, data[i]);
+        long[] tree = new long[2];
+        double treeMs = medianMs(() -> {
+            long sum = 0;
+            long max = 0;
+            for (int[] r : ranges) {
+                sum += segTree.rangeSum(r[0], r[1]);
+                max += segTree.rangeMax(r[0], r[1]);
             }
-            naiveSum += s;
-            naiveMax += m;
-        }
-        long naiveNanos = System.nanoTime() - t0;
+            tree[0] = sum;
+            tree[1] = max;
+        });
+        long[] naive = new long[2];
+        double naiveMs = medianMs(() -> {
+            long sum = 0;
+            long max = 0;
+            for (int[] r : ranges) {
+                int s = 0;
+                int m = Integer.MIN_VALUE;
+                for (int i = r[0]; i <= r[1]; i++) {
+                    s += data[i];
+                    m = Math.max(m, data[i]);
+                }
+                sum += s;
+                max += m;
+            }
+            naive[0] = sum;
+            naive[1] = max;
+        });
         System.out.printf("segment tree: %.2f ms   naive scan: %.2f ms   results match: %s%n%n",
-                ms(treeNanos), ms(naiveNanos), treeSum == naiveSum && treeMax == naiveMax);
+                treeMs, naiveMs, tree[0] == naive[0] && tree[1] == naive[1]);
     }
 
     // ------------------------------------------------------------------ red-black tree
@@ -245,32 +291,47 @@ public final class Benchmarks {
         }
         Collections.shuffle(keys, rnd);
 
-        RedBlackTree<Integer, Integer> rb = new RedBlackTree<>();
-        long t0 = System.nanoTime();
-        for (int k : keys) {
-            rb.put(k, k);
-        }
-        long insertNanos = System.nanoTime() - t0;
-        boolean validAfterInsert = rb.validate();
-        int height = rb.height();
-
         TreeMap<Integer, Integer> ref = new TreeMap<>();
         for (int k : keys) {
             ref.put(k, k);
         }
-        t0 = System.nanoTime();
         for (int i = 0; i < 50_000; i++) {
-            rb.remove(keys.get(i));
             ref.remove(keys.get(i));
         }
-        long removeNanos = System.nanoTime() - t0;
 
-        boolean same = rb.size() == ref.size()
-                && rb.firstKey().equals(ref.firstKey())
-                && rb.lastKey().equals(ref.lastKey());
+        double[] insertMs = new double[RUNS];
+        double[] removeMs = new double[RUNS];
+        boolean validAfterInsert = true;
+        boolean validAfterRemove = true;
+        boolean same = true;
+        int height = 0;
+        for (int run = -1; run < RUNS; run++) { // run -1 is the warm-up
+            RedBlackTree<Integer, Integer> rb = new RedBlackTree<>();
+            long t0 = System.nanoTime();
+            for (int k : keys) {
+                rb.put(k, k);
+            }
+            long insertNanos = System.nanoTime() - t0;
+            validAfterInsert &= rb.validate();
+            height = rb.height();
+
+            t0 = System.nanoTime();
+            for (int i = 0; i < 50_000; i++) {
+                rb.remove(keys.get(i));
+            }
+            long removeNanos = System.nanoTime() - t0;
+            validAfterRemove &= rb.validate();
+            same &= rb.size() == ref.size()
+                    && rb.firstKey().equals(ref.firstKey())
+                    && rb.lastKey().equals(ref.lastKey());
+            if (run >= 0) {
+                insertMs[run] = ms(insertNanos);
+                removeMs[run] = ms(removeNanos);
+            }
+        }
         System.out.printf("insert: %.2f ms   remove: %.2f ms   height after insert: %d (log2 n = 16.6)%n",
-                ms(insertNanos), ms(removeNanos), height);
+                median(insertMs), median(removeMs), height);
         System.out.printf("invariants hold after insert: %s, after remove: %s, matches TreeMap: %s%n",
-                validAfterInsert, rb.validate(), same);
+                validAfterInsert, validAfterRemove, same);
     }
 }
