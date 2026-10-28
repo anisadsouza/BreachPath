@@ -429,11 +429,11 @@ public final class DashboardApp extends Application {
         benchProgress.setPrefSize(22, 22);
         benchButton.getStyleClass().add("primary");
         benchButton.setOnAction(e -> runBenchmarks());
-        Label note = muted("Generated data, one run per size. Times change a little from run to run.");
+        Label note = muted("Generated data. Each time is the median of 5 runs after a warm-up run.");
         HBox bar = new HBox(12, benchButton, benchProgress, note);
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        summaryBox.getChildren().add(muted("Press \"Run benchmarks\". It takes a few seconds."));
+        summaryBox.getChildren().add(muted("Press \"Run benchmarks\". It takes 10 to 30 seconds."));
 
         benchArea.setEditable(false);
         font(benchArea, monoFont, FontWeight.NORMAL, 12);
@@ -911,6 +911,11 @@ public final class DashboardApp extends Application {
         TableColumn<DashboardModel.WhatIfRow, String> typeCol = new TableColumn<>("Type");
         typeCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(c.getValue().type()));
         typeCol.setMinWidth(90);
+        TableColumn<DashboardModel.WhatIfRow, String> exposureCol = new TableColumn<>("Exposure");
+        exposureCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(
+                (c.getValue().internetFacing() ? "internet-facing" : "internal")
+                        + (c.getValue().patched() ? ", patched" : ", unpatched")));
+        exposureCol.setMinWidth(170);
         TableColumn<DashboardModel.WhatIfRow, String> hopsCol = new TableColumn<>("Steps to target");
         hopsCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(
                 c.getValue().reaches() ? String.valueOf(c.getValue().hops()) : "cannot reach"));
@@ -923,6 +928,7 @@ public final class DashboardApp extends Application {
         costBCol.setMinWidth(150);
         whatIfTable.getColumns().add(hostCol);
         whatIfTable.getColumns().add(typeCol);
+        whatIfTable.getColumns().add(exposureCol);
         whatIfTable.getColumns().add(hopsCol);
         whatIfTable.getColumns().add(costACol);
         whatIfTable.getColumns().add(costBCol);
@@ -939,8 +945,8 @@ public final class DashboardApp extends Application {
             runAnalysis();
         });
         Label how = muted("Each host is treated as the only compromised one. Scenario A keeps that host online; "
-                + "Scenario B allows isolating it. Hosts that cost most to contain, and sit fewest steps "
-                + "from the target, are the ones to patch or segment first.");
+                + "Scenario B allows isolating it. Internet-facing hosts that are unpatched come first, then "
+                + "those that cost most to contain: those are the ones to patch or segment first.");
         how.setWrapText(true);
         how.setMinHeight(Region.USE_PREF_SIZE);
 
@@ -979,16 +985,34 @@ public final class DashboardApp extends Application {
             whatIfSummary.setText("No other host can reach the target.");
             return;
         }
-        DashboardModel.WhatIfRow hardest = reaching.get(0);
         DashboardModel.WhatIfRow nearest = reaching.get(0);
         for (DashboardModel.WhatIfRow r : reaching) {
             if (r.hops() < nearest.hops()) {
                 nearest = r;
             }
         }
-        whatIfSummary.setText(reaching.size() + " of " + rows.size() + " other hosts can reach the target. "
-                + "Hardest to contain: " + hardest.host() + " (cost " + whatIfCost(hardest, false) + "). "
-                + "Nearest: " + nearest.host() + " (" + nearest.hops() + (nearest.hops() == 1 ? " step)." : " steps)."));
+        StringBuilder text = new StringBuilder(reaching.size() + " of " + rows.size()
+                + " other hosts can reach the target. ");
+        DashboardModel.WhatIfRow first = reaching.get(0);
+        if (first.exposedAndUnpatched()) {
+            text.append("Patch first: ").append(first.host()).append(" (internet-facing, unpatched, ")
+                    .append(first.hops()).append(first.hops() == 1 ? " step, cost " : " steps, cost ")
+                    .append(whatIfCost(first, false)).append("). ");
+        } else {
+            text.append("No host is both internet-facing and unpatched. ");
+        }
+        DashboardModel.WhatIfRow costliest = reaching.get(0);
+        for (DashboardModel.WhatIfRow r : reaching) {
+            int key = r.feasibleA() ? r.costA() : Integer.MAX_VALUE;
+            int best = costliest.feasibleA() ? costliest.costA() : Integer.MAX_VALUE;
+            if (key > best) {
+                costliest = r;
+            }
+        }
+        text.append("Hardest to contain: ").append(costliest.host()).append(" (cost ")
+                .append(whatIfCost(costliest, false)).append("). Nearest: ").append(nearest.host()).append(" (")
+                .append(nearest.hops()).append(nearest.hops() == 1 ? " step)." : " steps).");
+        whatIfSummary.setText(text.toString());
     }
 
     // ---- tab: under the hood ----------------------------------------------------------------
@@ -1342,6 +1366,8 @@ public final class DashboardApp extends Application {
                     Asset a = model.topology().asset(i);
                     Incident inc = model.incidentFor(a.name());
                     tip.setText(a.name() + "\n" + a.type() + ", isolation cost " + a.isolationCost() + "\n"
+                            + (a.internetFacing() ? "Internet-facing" : "Internal")
+                            + (a.patched() ? ", patched" : ", unpatched") + "\n"
                             + (inc == null ? "No open incident"
                             : "Risk " + inc.riskScore() + " (" + level(inc.riskScore()) + ")")
                             + "\nAlerts in window: " + model.windowTotal(a.name()));
