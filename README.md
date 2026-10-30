@@ -22,6 +22,7 @@ All data is synthetic. The results are experiments on that data, not proof of re
 6. Checks each plan by removing the chosen links and hosts and confirming that no target is still
    reachable.
 7. Benchmarks every structure against a plain reference implementation.
+8. Exports the analysis as a single HTML report you can open in a browser or print to PDF.
 
 ## The five concepts
 
@@ -90,7 +91,8 @@ All files are in `data/`. Lines starting with `#` are comments.
     mvn javafx:run
 
 Compromised hosts and targets are chosen from drop-downs with tick boxes, so several can be picked at
-once. Hover over a host on the map to see its type, isolation cost, risk and alert count. The
+once. Hover over a host on the map to see its type, isolation cost, risk and alert count. The Export report
+button saves the incident ranking, both containment plans and the what-if table as one HTML file. The
 dashboard has six tabs:
 
 - **Overview:** the network map laid out by distance from the compromised host, the highest-risk
@@ -99,7 +101,8 @@ dashboard has six tabs:
   hits, IOC prefix search, and two actions on the selected incident: add evidence (re-scores it and
   moves it in the tree) or close it (removes it from the tree).
 - **Containment:** the two scenarios side by side, with the cut drawn on the map, the recommended
-  actions, and the verification result.
+  actions, and the verification result. A "Try it" panel lets you edit any link cost, or mark a link
+  as never to be cut, and watch the plans update. Edits last for the session and appear in the report.
 - **What-if:** treats every other host in turn as the only compromised one and shows how many
   steps it is from the target and what the cheapest containment would cost in each scenario.
   Internet-facing hosts that are unpatched come first, then the hosts costliest to contain: those
@@ -133,9 +136,9 @@ The dashboard needs JavaFX, so use Maven for that.
 
     mvn test
 
-104 JUnit tests cover each data structure on its own, the containment planner against a
+123 JUnit tests cover each data structure on its own, the containment planner against a
 brute-force minimum cut, corner cases (disconnected graphs, uncuttable paths, equal scores, empty
-patterns, repeated updates, bad input files) and the logic behind the dashboard, including the read-only tree views and the what-if sweep. The dashboard
+patterns, repeated updates, bad input files) and the logic behind the dashboard, including the read-only tree views, the what-if sweep, editable link costs and the HTML report. The dashboard
 logic lives in `ui/DashboardModel`, which has no JavaFX code, so it can be tested without a window.
 
 ## Results
