@@ -13,6 +13,7 @@ import com.breachpath.engine.RiskScorer;
 import com.breachpath.graph.EdmondsKarp;
 import com.breachpath.model.Asset;
 import com.breachpath.model.Incident;
+import com.breachpath.model.Link;
 import com.breachpath.model.IncidentKey;
 import com.breachpath.model.SecurityEvent;
 import com.breachpath.model.Topology;
@@ -40,7 +41,8 @@ public final class DashboardModel {
     /** Which containment scenario the dashboard is showing. */
     public enum Scenario { NONE, STRICT, RELAXED }
 
-    private final Topology topology;
+    private Topology topology;
+    private final Topology original;
     private final List<SecurityEvent> events;
     private final IocEngine iocEngine;
     private final List<String> patternLines;
@@ -66,6 +68,7 @@ public final class DashboardModel {
     public DashboardModel(Topology topology, List<SecurityEvent> events, IocEngine iocEngine,
                           List<String> patternLines) {
         this.topology = topology;
+        this.original = topology;
         this.events = List.copyOf(events);
         this.iocEngine = iocEngine;
         this.patternLines = List.copyOf(patternLines);
@@ -330,6 +333,80 @@ public final class DashboardModel {
             return x.host().compareTo(y.host());
         });
         return rows;
+    }
+
+    // ---- editable link costs ----------------------------------------------------------------
+
+    /** The links as they currently stand, including any cost edited in this session. */
+    public List<Link> links() {
+        return topology.links();
+    }
+
+    /**
+     * Changes one link's cost and recomputes both containment plans. Incidents and any evidence that
+     * was added stay as they are, because scoring does not depend on link costs.
+     *
+     * @param cost 0 to {@link ContainmentPlanner#INF}; INF marks a link that must never be cut
+     * @throws IllegalArgumentException for an unknown link or an out-of-range cost
+     */
+    public void setLinkCost(int linkIndex, int cost) {
+        requireAnalysed();
+        List<Link> links = new ArrayList<>(topology.links());
+        if (linkIndex < 0 || linkIndex >= links.size()) {
+            throw new IllegalArgumentException("No link number " + linkIndex);
+        }
+        if (cost < 0 || cost > ContainmentPlanner.INF) {
+            throw new IllegalArgumentException("A cost must be between 0 and " + ContainmentPlanner.INF
+                    + " (" + ContainmentPlanner.INF + " means the link must never be cut)");
+        }
+        Link old = links.get(linkIndex);
+        links.set(linkIndex, new Link(old.from(), old.to(), cost, old.bidirectional()));
+        topology = new Topology(topology.assets(), links);
+        computePlans();
+    }
+
+    /** Puts every link cost back to the value in the data file. */
+    public void resetLinkCosts() {
+        requireAnalysed();
+        topology = original;
+        computePlans();
+    }
+
+    /** One line per link whose cost differs from the data file, for example "A to B: 10 to 100". */
+    public List<String> costChanges() {
+        List<String> out = new ArrayList<>();
+        List<Link> before = original.links();
+        List<Link> now = topology.links();
+        for (int i = 0; i < before.size(); i++) {
+            if (before.get(i).cost() != now.get(i).cost()) {
+                Link l = now.get(i);
+                out.add(topology.asset(l.from()).name() + " to " + topology.asset(l.to()).name() + ": "
+                        + costText(before.get(i).cost()) + " to " + costText(l.cost()));
+            }
+        }
+        return out;
+    }
+
+    /** A link cost as people read it: the INF value means the link is never cut. */
+    public static String costText(int cost) {
+        return cost >= ContainmentPlanner.INF ? "never cut" : String.valueOf(cost);
+    }
+
+    /** Priority label for a risk score. */
+    public static String priority(int score) {
+        if (score >= 80) {
+            return "Critical";
+        }
+        if (score >= 60) {
+            return "High";
+        }
+        return score >= 30 ? "Medium" : "Low";
+    }
+
+    private void computePlans() {
+        ContainmentPlanner planner = new ContainmentPlanner();
+        this.strictEk = planner.plan(topology, sources, targets, false, new EdmondsKarp());
+        this.relaxedEk = planner.plan(topology, sources, targets, true, new EdmondsKarp());
     }
 
     public boolean isBalanced() {

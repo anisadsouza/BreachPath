@@ -2,6 +2,7 @@ package com.breachpath.ui;
 
 import com.breachpath.engine.Benchmarks;
 import com.breachpath.engine.ContainmentPlan;
+import com.breachpath.engine.ContainmentPlanner;
 import com.breachpath.model.Asset;
 import com.breachpath.model.Incident;
 import com.breachpath.model.IncidentKey;
@@ -39,6 +40,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.ToggleButton;
@@ -56,14 +58,18 @@ import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.TextAlignment;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -99,6 +105,7 @@ public final class DashboardApp extends Application {
     private static String numberFont = "System";
     private static String monoFont = "Monospaced";
 
+    private Stage stage;
     private DashboardModel model;
     private String selectedHost;
     private boolean updatingSelection;
@@ -128,6 +135,9 @@ public final class DashboardApp extends Application {
     private final ListView<String> iocResults = new ListView<>();
     private final Spinner<Integer> hourSpinner = new Spinner<>(0, 23, 12);
     private final Spinner<Integer> deltaSpinner = new Spinner<>(1, 500, 30);
+
+    // link cost editor
+    private final TableView<LinkRow> linkTable = new TableView<>();
 
     // what-if
     private final TableView<DashboardModel.WhatIfRow> whatIfTable = new TableView<>();
@@ -160,6 +170,7 @@ public final class DashboardApp extends Application {
 
     @Override
     public void start(Stage stage) {
+        this.stage = stage;
         chooseFonts();
         String dir = getParameters().getNamed().getOrDefault("data", "data");
         try {
@@ -249,12 +260,21 @@ public final class DashboardApp extends Application {
         run.getStyleClass().add("primary");
         run.setDefaultButton(true);
         run.setOnAction(e -> runAnalysis());
+        Button export = new Button("Export report");
+        export.setOnAction(e -> exportReport());
         status.setWrapText(true);
         HBox.setHgrow(status, Priority.ALWAYS);
 
         HBox controls = new HBox(8, new Label("Compromised host"), compromisedPicker.button, new Label("Protected target"),
-                targetPicker.button, new Label("Hours"), fromSpinner, new Label("to"), toSpinner, run, status);
+                targetPicker.button, new Label("Hours"), fromSpinner, new Label("to"), toSpinner, run, export, status);
         controls.setAlignment(Pos.CENTER_LEFT);
+        for (Node child : controls.getChildren()) {
+            if (child != status && child instanceof Region) {
+                ((Region) child).setMinWidth(Region.USE_PREF_SIZE);
+            }
+        }
+        status.setMinWidth(0);
+        status.setPrefWidth(200);
 
         VBox box = new VBox(10, titles, controls);
         box.setPadding(new Insets(12, 16, 8, 16));
@@ -411,7 +431,7 @@ public final class DashboardApp extends Application {
         VBox.setVgrow(containmentGraph.holder, Priority.ALWAYS);
 
         planBox.setPadding(new Insets(6, 16, 16, 8));
-        ScrollPane scroll = new ScrollPane(planBox);
+        ScrollPane scroll = new ScrollPane(new VBox(14, planBox, buildLinkEditor()));
         scroll.setFitToWidth(true);
         scroll.setPrefWidth(380);
 
@@ -615,6 +635,7 @@ public final class DashboardApp extends Application {
         fillPlan(shown);
 
         updateWhatIf();
+        refreshLinkTable();
         refreshSelectionViews();
     }
 
@@ -846,6 +867,13 @@ public final class DashboardApp extends Application {
         verified.setPadding(new Insets(6, 0, 6, 0));
         Label how = muted(String.format(Locale.ROOT, "Run time (Edmonds-Karp): %.2f ms", ek.nanos() / 1e6));
         planBox.getChildren().addAll(actions, total, affected, verified, how);
+        int edited = model.costChanges().size();
+        if (edited > 0) {
+            Label note = muted("Link costs edited: " + edited + " (see the editor below).");
+            note.setWrapText(true);
+            note.setMinHeight(Region.USE_PREF_SIZE);
+            planBox.getChildren().add(note);
+        }
     }
 
     // ---- host picker ------------------------------------------------------------------------
@@ -896,6 +924,106 @@ public final class DashboardApp extends Application {
             int count = csv.isEmpty() ? 0 : csv.split(",").length;
             button.setText(count == 0 ? "Choose hosts" : count <= 2 ? csv.replace(",", ", ") : count + " hosts");
         }
+    }
+
+    // ---- export report ----------------------------------------------------------------------
+
+    private void exportReport() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Save report");
+        chooser.setInitialFileName("breachpath-report.html");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("HTML report", "*.html"));
+        File file = chooser.showSaveDialog(stage);
+        if (file == null) {
+            return;
+        }
+        Path path = file.getName().toLowerCase().endsWith(".html") ? file.toPath()
+                : file.toPath().resolveSibling(file.getName() + ".html");
+        try {
+            ReportWriter.write(path, model,
+                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("d MMMM yyyy, HH:mm")));
+            setStatus("Report saved to " + path.getFileName() + ". Open it in a browser.", true);
+        } catch (IOException ex) {
+            setStatus("Could not save the report: " + ex.getMessage(), false);
+        }
+    }
+
+    // ---- editable link costs ----------------------------------------------------------------
+
+    /** One row of the link cost editor. */
+    private record LinkRow(int index, String from, String to, boolean both, int cost) {
+    }
+
+    private VBox buildLinkEditor() {
+        TableColumn<LinkRow, String> linkCol = new TableColumn<>("Link");
+        linkCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(
+                c.getValue().from() + " to " + c.getValue().to() + (c.getValue().both() ? "" : " (one way)")));
+        linkCol.setMinWidth(170);
+        TableColumn<LinkRow, String> costCol = new TableColumn<>("Cost to cut");
+        costCol.setCellValueFactory(c -> new ReadOnlyObjectWrapper<>(DashboardModel.costText(c.getValue().cost())));
+        costCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        costCol.setEditable(true);
+        costCol.setMinWidth(100);
+        costCol.setOnEditCommit(ev -> {
+            LinkRow row = ev.getRowValue();
+            try {
+                int cost = parseCost(ev.getNewValue());
+                model.setLinkCost(row.index(), cost);
+                setStatus("Changed " + row.from() + " to " + row.to() + " to cost " + DashboardModel.costText(cost)
+                        + ". Containment plans updated.", true);
+                refreshAll(selectedHost);
+            } catch (IllegalArgumentException ex) {
+                setStatus("Error: " + ex.getMessage(), false);
+                refreshLinkTable();
+            }
+        });
+        linkTable.getColumns().add(linkCol);
+        linkTable.getColumns().add(costCol);
+        linkTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        linkTable.setEditable(true);
+        linkTable.setPrefHeight(300);
+
+        Button reset = new Button("Reset costs");
+        reset.setOnAction(e -> {
+            model.resetLinkCosts();
+            setStatus("Link costs reset to the data file.", true);
+            refreshAll(selectedHost);
+        });
+        Label help = muted("Links work both ways unless marked. Double-click a cost, type a number and press Enter. "
+                + "Type inf for a link that must never be cut. Changes last until you reset them or close the app.");
+        help.setWrapText(true);
+        help.setMinHeight(Region.USE_PREF_SIZE);
+        VBox content = new VBox(8, help, linkTable, reset);
+        content.setPadding(new Insets(10));
+        TitledPane pane = new TitledPane("Try it: edit link costs", content);
+        pane.setExpanded(false);
+        pane.setAnimated(false);
+        VBox box = new VBox(pane);
+        box.setPadding(new Insets(0, 16, 16, 8));
+        return box;
+    }
+
+    private static int parseCost(String text) {
+        String t = text == null ? "" : text.trim().toLowerCase();
+        if (t.equals("inf") || t.equals("never") || t.equals("never cut")) {
+            return ContainmentPlanner.INF;
+        }
+        try {
+            return Integer.parseInt(t);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("A cost must be a whole number, or inf for a link that must never be cut");
+        }
+    }
+
+    private void refreshLinkTable() {
+        List<LinkRow> rows = new ArrayList<>();
+        List<com.breachpath.model.Link> links = model.links();
+        for (int i = 0; i < links.size(); i++) {
+            com.breachpath.model.Link l = links.get(i);
+            rows.add(new LinkRow(i, model.topology().asset(l.from()).name(), model.topology().asset(l.to()).name(),
+                    l.bidirectional(), l.cost()));
+        }
+        linkTable.setItems(FXCollections.observableArrayList(rows));
     }
 
     // ---- tab: what-if -----------------------------------------------------------------------
