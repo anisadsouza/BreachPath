@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BreachPath</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>BreachPath</h1>
+      <p class="muted">Breach analysis and containment planning. All algorithms run in the Java backend.</p>
+    </div>
+    <div id="dataStatus" class="status muted" aria-live="polite"></div>
+  </header>
+
+  <div id="banner" class="banner" role="alert" hidden></div>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+    <button role="tab" data-tab="investigate" aria-selected="false">Investigation</button>
+    <button role="tab" data-tab="contain" aria-selected="false">Containment</button>
+    <button role="tab" data-tab="whatif" aria-selected="false">What-if</button>
+    <button role="tab" data-tab="data" aria-selected="false">Data</button>
+    <button role="tab" data-tab="bench" aria-selected="false">Benchmarks</button>
+  </nav>
+
+  <main>
+    <!-- OVERVIEW -->
+    <section id="tab-overview" class="panel">
+      <form id="analyseForm" class="card controls">
+        <div class="field">
+          <span class="label">Compromised hosts</span>
+          <div id="srcList" class="checklist" role="group" aria-label="Compromised hosts"></div>
+        </div>
+        <div class="field">
+          <span class="label">Protected targets</span>
+          <div id="tgtList" class="checklist" role="group" aria-label="Protected targets"></div>
+        </div>
+        <div class="field narrow">
+          <label class="label" for="fromHour">Window from hour</label>
+          <input id="fromHour" type="number" min="0" max="23" value="0">
+          <label class="label" for="toHour">to hour</label>
+          <input id="toHour" type="number" min="0" max="23" value="23">
+          <button type="submit" class="primary">Run analysis</button>
+        </div>
+      </form>
+
+      <div id="overviewBody" hidden>
+        <div id="statCards" class="cards"></div>
+        <div class="two">
+          <div class="card">
+            <h2>Incidents by risk</h2>
+            <p class="muted small">Kept ordered in a red-black tree keyed by (risk score, incident id). Select a row to investigate it.</p>
+            <div id="incidentTable"></div>
+          </div>
+          <div class="card">
+            <h2>Network map</h2>
+            <p class="muted small">Hosts are placed by distance from the compromised hosts. Red outline: compromised. Square: protected target.</p>
+            <div id="mapOverview" class="map"></div>
+            <h3>Attack paths</h3>
+            <div id="paths"></div>
+          </div>
+        </div>
+      </div>
+      <p id="overviewEmpty" class="card muted">Choose compromised hosts and targets, then run the analysis.</p>
+    </section>
+
+    <!-- INVESTIGATION -->
+    <section id="tab-investigate" class="panel" hidden>
+      <div class="two">
+        <div class="card">
+          <h2>Selected incident</h2>
+          <div id="incidentDetail" class="muted">Select an incident on the Overview tab.</div>
+          <form id="evidenceForm" class="inline" hidden>
+            <label for="evHour">Hour</label>
+            <input id="evHour" type="number" min="0" max="23" value="12">
+            <label for="evDelta">Add alerts</label>
+            <input id="evDelta" type="number" min="1" max="100000" value="30">
+            <button type="submit">Add evidence</button>
+            <button type="button" id="closeIncident">Close incident</button>
+          </form>
+          <p class="muted small" id="evidenceHint" hidden>Adding evidence is a point update on the segment tree; the incident is re-scored and moved in the red-black tree.</p>
+        </div>
+        <div class="card">
+          <h2>Indicator screening (Bloom filter)</h2>
+          <p class="muted small">The filter answers "definitely absent" or "possibly present". A "possibly present" is always confirmed against the exact trie before it counts.</p>
+          <form id="screenForm" class="inline">
+            <label for="screenInput" class="sr">Indicator</label>
+            <input id="screenInput" type="text" maxlength="300" placeholder="e.g. update-cdn.evil-domain.com" autocomplete="off">
+            <button type="submit">Screen</button>
+          </form>
+          <div id="screenOut"></div>
+          <div id="bloomStats" class="muted small"></div>
+        </div>
+      </div>
+      <div class="two">
+        <div class="card">
+          <h2>IOC prefix search (trie)</h2>
+          <form id="iocForm" class="inline">
+            <label for="iocInput" class="sr">Prefix</label>
+            <input id="iocInput" type="text" maxlength="300" placeholder="type a prefix, e.g. update" autocomplete="off">
+            <button type="submit">Search</button>
+          </form>
+          <div id="iocOut"></div>
+        </div>
+        <div class="card">
+          <h2>Wildcard command hunt</h2>
+          <p class="muted small">"." stands for exactly one unknown character, for example <code>p.wershell</code>.</p>
+          <form id="patForm" class="inline">
+            <label for="patInput" class="sr">Pattern</label>
+            <input id="patInput" type="text" maxlength="200" placeholder="p.wershell" autocomplete="off">
+            <button type="submit">Match</button>
+          </form>
+          <div id="patOut"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTAINMENT -->
+    <section id="tab-contain" class="panel" hidden>
+      <p id="containEmpty" class="card muted">Run an analysis on the Overview tab first.</p>
+      <div id="containBody" hidden>
+        <div class="two" id="plans"></div>
+        <div class="card">
+          <h2>Network map with the cut</h2>
+          <div class="inline">
+            <label for="scenarioPick">Show scenario</label>
+            <select id="scenarioPick"><option value="A">A: compromised hosts stay online</option><option value="B">B: isolating them is allowed</option></select>
+          </div>
+          <p class="muted small">Dashed red links are blocked; hosts with a cross are isolated.</p>
+          <div id="mapCut" class="map"></div>
+        </div>
+        <div class="card">
+          <h2>Try it: edit link costs</h2>
+          <p class="muted small">Changing a cost re-runs max flow / min cut. A cost of 1,000,000 marks a link that must never be cut. Edits last until you reset or reload the data.</p>
+          <div id="linkTable"></div>
+          <button type="button" id="resetLinks">Reset link costs</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHAT-IF -->
+    <section id="tab-whatif" class="panel" hidden>
+      <div class="card">
+        <h2>What if this host were the only compromised one?</h2>
+        <p class="muted small">Each other host is treated in turn as the only compromised host. Internet-facing, unpatched hosts come first, then the hosts that cost most to contain.</p>
+        <button type="button" id="loadWhatIf">Compute what-if table</button>
+        <div id="whatIfOut"></div>
+      </div>
+    </section>
+
+    <!-- DATA -->
+    <section id="tab-data" class="panel" hidden>
+      <div class="two">
+        <form id="uploadForm" class="card">
+          <h2>Use your own data</h2>
+          <p class="muted small">Choose the files, then upload. Everything is validated first; if a file is invalid, the current data stays as it was and the error names the file and line.</p>
+          <div class="filegrid">
+            <label for="fAssets">assets.csv</label><input id="fAssets" type="file" accept=".csv,.txt">
+            <label for="fEdges">network_edges.csv</label><input id="fEdges" type="file" accept=".csv,.txt">
+            <label for="fEvents">security_events.csv</label><input id="fEvents" type="file" accept=".csv,.txt">
+            <label for="fIocs">iocs.txt (optional)</label><input id="fIocs" type="file" accept=".txt">
+            <label for="fPatterns">patterns.txt (optional)</label><input id="fPatterns" type="file" accept=".txt">
+          </div>
+          <div class="inline">
+            <button type="submit" class="primary">Validate and upload</button>
+            <button type="button" id="resetData">Reload sample data</button>
+          </div>
+        </form>
+        <div class="card">
+          <h2>Input format and limits</h2>
+          <ul class="plain small">
+            <li><code>assets.csv</code>: name,type,isolationCost[,internetFacing,patched]. Costs are whole numbers from 0 to 1,000,000.</li>
+            <li><code>network_edges.csv</code>: from,to,cost,bidirectional. Both hosts must exist in assets.</li>
+            <li><code>security_events.csv</code>: hour,host,eventType,count,indicator,command. Hour is 0 to 23, count is 0 or more, "-" means none.</li>
+            <li><code>iocs.txt</code>: one indicator per line; a trailing * makes it a prefix rule. <code>patterns.txt</code>: one pattern per line, "." is one character.</li>
+            <li>Each CSV starts with a header row. Lines starting with # are comments. At most 500 assets and 2 MB per upload.</li>
+          </ul>
+          <button type="button" id="downloadReport">Download HTML report</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- BENCHMARKS -->
+    <section id="tab-bench" class="panel" hidden>
+      <div class="card">
+        <h2>Benchmarks: each technique against a baseline at three sizes</h2>
+        <p class="muted small">Run on the server with seeded synthetic data. Every row also checks that the technique and the baseline return the same answer. The quick run takes about 15 seconds.</p>
+        <div class="inline">
+          <button type="button" id="runBench" class="primary">Run quick benchmark</button>
+          <button type="button" id="runBenchFull">Run full benchmark</button>
+          <span id="benchState" class="muted small"></span>
+        </div>
+      </div>
+      <div id="benchOut"></div>
+    </section>
+  </main>
+
+  <footer class="muted small">All data is synthetic. Results are experiments on that data, not proof of real-world protection.</footer>
+  <script src="/app.js"></script>
+</body>
+</html>

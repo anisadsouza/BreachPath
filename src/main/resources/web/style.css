@@ -1,0 +1,118 @@
+/* BreachPath web theme, matching the desktop dashboard: cool grey chrome, white data surfaces,
+   ink text. Colour is reserved for risk. */
+@font-face { font-family: "Fira Sans"; src: url("/fonts/FiraSans-Regular.ttf") format("truetype"); font-weight: 400; }
+@font-face { font-family: "Fira Sans"; src: url("/fonts/FiraSans-Bold.ttf") format("truetype"); font-weight: 700; }
+@font-face { font-family: "IBM Plex Mono"; src: url("/fonts/IBMPlexMono-Regular.ttf") format("truetype"); font-weight: 400; }
+
+:root {
+  --chrome: #e8ebef;
+  --surface: #ffffff;
+  --page: #f6f7f9;
+  --ink: #20242a;
+  --muted: #5d6671;
+  --line: #cfd5dc;
+  --accent: #0b4f6c;
+  --critical: #a4262c;
+  --high: #c4561f;
+  --medium: #8a6a00;
+  --low: #5d6671;
+  --ok: #1d6b3a;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--chrome); }
+body {
+  margin: 0; color: var(--ink); background: var(--page);
+  font: 15px/1.45 "Fira Sans", system-ui, sans-serif;
+}
+code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.92em; }
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 17px; margin: 0 0 8px; }
+h3 { font-size: 15px; margin: 14px 0 6px; }
+p { margin: 0 0 8px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.sr { position: absolute; left: -9999px; }
+
+.top { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap;
+  padding: 16px 20px 10px; background: var(--chrome); }
+.status { font-size: 13px; text-align: right; }
+.banner { margin: 0; padding: 10px 20px; background: #fbe9ea; color: var(--critical); border-bottom: 1px solid #e6b8bb; }
+.banner.info { background: #e6f1f5; color: var(--accent); border-color: #b9d4de; }
+
+.tabs { display: flex; gap: 2px; padding: 0 14px; background: var(--chrome); overflow-x: auto; }
+.tabs button { background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0;
+  padding: 8px 16px 6px; color: var(--muted); font-size: 14px; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
+
+main { padding: 16px 20px 8px; max-width: 1400px; margin: 0 auto; }
+.panel[hidden], [hidden] { display: none !important; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 14px 16px; margin-bottom: 14px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+.two > .card { margin-bottom: 0; }
+.two { margin-bottom: 14px; }
+
+.controls { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field.narrow { gap: 6px; }
+.label { font-size: 13px; color: var(--muted); }
+.checklist { display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: 520px; max-height: 120px; overflow: auto;
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 2px; background: #fbfcfd; }
+.checklist label { display: inline-flex; gap: 5px; align-items: center; font-size: 13px; white-space: nowrap; }
+
+input[type="text"], input[type="number"], select {
+  font: inherit; padding: 5px 8px; border: 1px solid #aab5c1; border-radius: 2px; background: #fff; color: var(--ink); }
+input[type="text"] { min-width: 260px; }
+input[type="number"] { width: 90px; }
+button { font: inherit; padding: 6px 14px; border: 1px solid #aab5c1; border-radius: 2px; background: #fbfcfd; color: var(--ink); cursor: pointer; }
+button:hover { background: #eef1f4; }
+button.primary { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 700; }
+button.primary:hover { background: #343a43; }
+button:disabled { opacity: 0.55; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.filegrid { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; margin: 10px 0; font-size: 13px; }
+ul.plain { margin: 0 0 10px; padding-left: 18px; }
+ul.plain li { margin-bottom: 4px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 10px 14px; }
+.stat .v { font-size: 24px; font-weight: 700; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat.bad .v { color: var(--critical); }
+.stat.good .v { color: var(--ok); }
+
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e7ec; vertical-align: top; }
+th { color: var(--muted); font-weight: 400; font-size: 12px; position: sticky; top: 0; background: var(--surface); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.pick { cursor: pointer; }
+tr.pick:hover td { background: #f1f4f7; }
+tr.sel td { background: #e6f1f5; }
+.tablewrap { max-height: 420px; overflow: auto; }
+.pri { font-weight: 700; }
+.pri.Critical { color: var(--critical); }
+.pri.High { color: var(--high); }
+.pri.Medium { color: var(--medium); }
+.pri.Low { color: var(--low); }
+.tag { display: inline-block; font-size: 12px; padding: 0 6px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); }
+.tag.ok { color: var(--ok); border-color: #a9d3b8; }
+.tag.bad { color: var(--critical); border-color: #e6b8bb; }
+
+.map svg { width: 100%; height: auto; display: block; background: #fbfcfd; border: 1px solid var(--line); }
+.map text { font: 11px "Fira Sans", sans-serif; fill: var(--ink); }
+.plan h2 { display: flex; justify-content: space-between; gap: 8px; }
+.plan .cost { font-size: 28px; font-weight: 700; }
+.plan ul { margin: 6px 0; padding-left: 18px; }
+.chart svg { width: 100%; height: auto; display: block; }
+.bar { fill: #9aa6b2; }
+.bar.in { fill: var(--accent); }
+.bench h2 { margin-bottom: 2px; }
+.bench .cmp { margin-top: 6px; }
+footer { padding: 6px 20px 24px; max-width: 1400px; margin: 0 auto; }
+pre.out { margin: 8px 0 0; white-space: pre-wrap; }
+
+@media (max-width: 640px) {
+  .two { grid-template-columns: 1fr; }
+  input[type="text"] { min-width: 0; width: 100%; }
+}
