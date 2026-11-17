@@ -18,6 +18,7 @@ import com.breachpath.model.IncidentKey;
 import com.breachpath.model.SecurityEvent;
 import com.breachpath.model.Topology;
 import com.breachpath.rbtree.RedBlackTree;
+import com.breachpath.select.RandomizedSelect;
 import com.breachpath.storage.DataLoader;
 
 import java.io.IOException;
@@ -29,7 +30,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * All dashboard logic with no JavaFX dependency, so it can be unit-tested headlessly.
@@ -80,6 +83,80 @@ public final class DashboardModel {
         IocEngine ioc = IocEngine.fromLines(DataLoader.loadLines(dir.resolve("iocs.txt")));
         List<String> patterns = DataLoader.loadLines(dir.resolve("patterns.txt"));
         return new DashboardModel(topo, events, ioc, patterns);
+    }
+
+    /** Builds a model from uploaded text instead of files. Throws IllegalArgumentException for bad input. */
+    public static DashboardModel fromText(String assetsCsv, String edgesCsv, String eventsCsv,
+                                          String iocText, String patternText) {
+        Topology topo = DataLoader.parseTopology(assetsCsv, edgesCsv);
+        List<SecurityEvent> events = DataLoader.parseEvents(eventsCsv);
+        IocEngine ioc = IocEngine.fromLines(DataLoader.parseLines(iocText));
+        List<String> patterns = DataLoader.parseLines(patternText);
+        return new DashboardModel(topo, events, ioc, patterns);
+    }
+
+    /** Hosts that appear in the alert log but not in the asset list; their rows are ignored by the analysis. */
+    public Set<String> unknownLogHosts() {
+        Set<String> out = new TreeSet<>();
+        for (SecurityEvent e : events) {
+            if (!topology.has(e.host())) {
+                out.add(e.host());
+            }
+        }
+        return out;
+    }
+
+    /** Number of alert-log rows loaded. */
+    public int eventCount() {
+        return events.size();
+    }
+
+    /** Number of wildcard hunting patterns loaded. */
+    public int patternCount() {
+        return patternLines.size();
+    }
+
+    /** Number of IOC entries (exact and prefix rules) loaded. */
+    public int iocCount() {
+        return iocEngine.size();
+    }
+
+    /** Screens one indicator: Bloom filter first, then exact confirmation (see {@link IocEngine#screen}). */
+    public IocEngine.Screening screenIndicator(String indicator) {
+        return iocEngine.screen(indicator == null ? "" : indicator.trim());
+    }
+
+    /** Bloom filter parameters and screening counters. */
+    public IocEngine.BloomStats bloomStats() {
+        return iocEngine.bloomStats();
+    }
+
+    /**
+     * Distribution of the current incident risk scores, found with randomized Quickselect (no
+     * sorting). Uses a fixed seed, so the same data always gives the same numbers and cost.
+     *
+     * @param comparisons element comparisons spent by all four selections
+     */
+    public record RiskStats(int count, int median, int p75, int p90, int max, long comparisons) {
+    }
+
+    public RiskStats riskStats() {
+        requireAnalysed();
+        List<Incident> all = incidents.top(incidents.size());
+        if (all.isEmpty()) {
+            return new RiskStats(0, 0, 0, 0, 0, 0);
+        }
+        int[] scores = new int[all.size()];
+        for (int i = 0; i < scores.length; i++) {
+            scores[i] = all.get(i).riskScore();
+        }
+        Random rnd = new Random(42);
+        RandomizedSelect.Result median = RandomizedSelect.median(scores, rnd);
+        RandomizedSelect.Result p75 = RandomizedSelect.percentile(scores, 75, rnd);
+        RandomizedSelect.Result p90 = RandomizedSelect.percentile(scores, 90, rnd);
+        RandomizedSelect.Result max = RandomizedSelect.percentile(scores, 100, rnd);
+        return new RiskStats(scores.length, median.value(), p75.value(), p90.value(), max.value(),
+                median.comparisons() + p75.comparisons() + p90.comparisons() + max.comparisons());
     }
 
     /**

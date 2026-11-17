@@ -11,11 +11,13 @@ import com.breachpath.engine.IocEngine;
 import com.breachpath.engine.PatternEngine;
 import com.breachpath.engine.RiskAssessment;
 import com.breachpath.engine.RiskScorer;
+import com.breachpath.engine.ScalingBenchmarks;
 import com.breachpath.graph.EdmondsKarp;
 import com.breachpath.graph.MaxFlowAlgorithm;
 import com.breachpath.model.Incident;
 import com.breachpath.model.SecurityEvent;
 import com.breachpath.model.Topology;
+import com.breachpath.select.RandomizedSelect;
 import com.breachpath.storage.DataLoader;
 
 import java.io.IOException;
@@ -25,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -137,6 +140,42 @@ public final class ConsoleApp {
         System.out.printf("%d incidents opened, tree balanced: %s%n", incidents.size(), incidents.isBalanced());
         printTop(incidents, 5);
 
+        // 4b. Screen indicators and summarise the scores -------------------------
+        heading("4b. Screen indicators (Bloom filter, then exact check)");
+        Set<String> seen = new TreeSet<>();
+        for (SecurityEvent e : events) {
+            if (!e.indicator().isEmpty()) {
+                seen.add(e.indicator());
+            }
+        }
+        seen.add("clean-host.example.org");
+        System.out.printf("  %-34s %-18s %-9s %s%n", "indicator", "Bloom filter", "exact", "result");
+        for (String ind : seen) {
+            IocEngine.Screening s = iocEngine.screen(ind);
+            System.out.printf("  %-34s %-18s %-9s %s%n", ind,
+                    s.bloomPossible() ? "possibly present" : "definitely absent",
+                    s.bloomPossible() ? (s.exactConfirmed() ? "confirmed" : "rejected") : "skipped",
+                    s.known() ? (s.exactConfirmed() ? "KNOWN IOC" : "KNOWN IOC (prefix rule)") : "not a known IOC");
+        }
+        IocEngine.BloomStats bs = iocEngine.bloomStats();
+        System.out.printf("  Filter: %d bits, %d hash functions, %d exact indicators, fill %.0f%%, estimated false-positive rate %.4f%%%n",
+                bs.bitSize(), bs.hashCount(), bs.items(), bs.fillRatio() * 100, bs.estimatedRate() * 100);
+        System.out.printf("  %d of %d lookups were answered by the filter alone (a hit is only 'possibly present' and is always confirmed)%n",
+                bs.bloomRejects(), bs.lookups());
+
+        List<Incident> ranked = incidents.top(incidents.size());
+        if (!ranked.isEmpty()) {
+            int[] scores = new int[ranked.size()];
+            for (int i = 0; i < scores.length; i++) {
+                scores[i] = ranked.get(i).riskScore();
+            }
+            Random rnd = new Random(42);
+            RandomizedSelect.Result median = RandomizedSelect.median(scores, rnd);
+            RandomizedSelect.Result p90 = RandomizedSelect.percentile(scores, 90, rnd);
+            System.out.printf("%n  Risk scores by randomized Quickselect (no sort): median %d, 90th percentile %d (%d + %d comparisons for %d incidents)%n",
+                    median.value(), p90.value(), median.comparisons(), p90.comparisons(), scores.length);
+        }
+
         List<Incident> all = incidents.top(incidents.size());
         Incident lowest = all.get(all.size() - 1);
         timeline.addAlerts(lowest.host(), 12, 30);
@@ -174,6 +213,8 @@ public final class ConsoleApp {
         if (benchmark) {
             heading("7. Performance evaluation");
             Benchmarks.runAll();
+            heading("8. Scaling study (three input sizes per technique, each against a baseline)");
+            ScalingBenchmarks.print(ScalingBenchmarks.run(ScalingBenchmarks.Profile.QUICK));
         } else {
             System.out.println();
             System.out.println("Tip: add the word 'benchmark' to the command to run the performance experiments.");

@@ -43,6 +43,30 @@ class WordDictionaryTest {
     }
 
     @Test
+    void patternOfTheWrongLengthNeverMatches() {
+        WordDictionary d = sample();
+        assertFalse(d.search("p"));
+        assertFalse(d.search("powerr"));
+        assertEquals(List.of(), d.findAll("......"));
+    }
+
+    @Test
+    void emptyDictionaryMatchesNothingAndEmptyWordsAreRejected() {
+        WordDictionary d = new WordDictionary();
+        assertFalse(d.search("..."));
+        assertEquals(List.of(), d.findAll("a.c"));
+        assertEquals(0, d.size());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> d.addWord(""));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> d.addWord(null));
+    }
+
+    @Test
+    void patternMadeOnlyOfDotsMatchesEveryWordOfThatLength() {
+        assertEquals(List.of("bad", "dad", "mad"), sample().findAll("..."));
+        assertEquals(List.of("pewer", "power"), sample().findAll("....."));
+    }
+
+    @Test
     void duplicateWordsCountOnce() {
         WordDictionary d = new WordDictionary();
         d.addWord("abc");
