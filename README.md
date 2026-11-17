@@ -165,10 +165,10 @@ for the tests).
     mvn package
     java -cp target/breachpath-1.0.jar com.breachpath.web.WebApp
 
-Then open http://127.0.0.1:8080/ in a browser. Optional arguments and settings (none is a secret):
+Then open http://127.0.0.1:8090/ in a browser. Optional arguments and settings (none is a secret):
 
     java -cp target/breachpath-1.0.jar com.breachpath.web.WebApp [dataDir] [port]
-    BREACHPATH_DATA=data PORT=8080 BREACHPATH_HOST=127.0.0.1
+    BREACHPATH_DATA=data PORT=8090 BREACHPATH_HOST=127.0.0.1
 
 The browser only displays results. Every algorithm runs in the Java backend. The tabs are:
 
@@ -218,8 +218,8 @@ Examples:
       -d '{"compromised":["WS-Alice"],"targets":["DB-PROD"],"fromHour":0,"toHour":23}' \
       http://127.0.0.1:8080/api/analyse
 
-    curl -s "http://127.0.0.1:8080/api/ioc/screen?indicator=185.220.101.7"
-    curl -s "http://127.0.0.1:8080/api/ioc/screen?indicator=clean.example.org"
+    curl -s "http://127.0.0.1:8090/api/ioc/screen?indicator=185.220.101.7"
+    curl -s "http://127.0.0.1:8090/api/ioc/screen?indicator=clean.example.org"
 
 The first screening call answers `"bloom":"possibly present"` with `"exactConfirmed":true`. The
 second answers `"bloom":"definitely absent"` and the exact check is skipped.
