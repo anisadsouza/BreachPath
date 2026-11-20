@@ -10,7 +10,7 @@
   <header class="top">
     <div class="brand">
       <h1>BreachPath</h1>
-      <p class="muted">Breach analysis and containment planning. All algorithms run in the Java backend.</p>
+      <p class="muted">Find how an attacker can spread and the cheapest way to stop them.</p>
     </div>
     <div id="dataStatus" class="status muted" aria-live="polite"></div>
   </header>
@@ -52,12 +52,12 @@
         <div class="two">
           <div class="card">
             <h2>Incidents by risk</h2>
-            <p class="muted small">Kept ordered in a red-black tree keyed by (risk score, incident id). Select a row to investigate it.</p>
+            <p class="muted small">Highest risk first. Click a row for details.</p>
             <div id="incidentTable"></div>
           </div>
           <div class="card">
             <h2>Network map</h2>
-            <p class="muted small">Hosts are placed by distance from the compromised hosts. Red outline: compromised. Square: protected target.</p>
+            <p class="muted small">Red outline: compromised. Square: protected target.</p>
             <div id="mapOverview" class="map"></div>
             <h3>Attack paths</h3>
             <div id="paths"></div>
@@ -81,11 +81,11 @@
             <button type="submit">Add evidence</button>
             <button type="button" id="closeIncident">Close incident</button>
           </form>
-          <p class="muted small" id="evidenceHint" hidden>Adding evidence is a point update on the segment tree; the incident is re-scored and moved in the red-black tree.</p>
+          <p class="muted small" id="evidenceHint" hidden>Adding alerts re-scores this incident and moves it in the ranking.</p>
         </div>
         <div class="card">
-          <h2>Indicator screening (Bloom filter)</h2>
-          <p class="muted small">The filter answers "definitely absent" or "possibly present". A "possibly present" is always confirmed against the exact trie before it counts.</p>
+          <h2>Check an indicator</h2>
+          <p class="muted small">Quick check of an indicator against the known-bad list. "Possibly present" is always double-checked before it counts.</p>
           <form id="screenForm" class="inline">
             <label for="screenInput" class="sr">Indicator</label>
             <input id="screenInput" type="text" maxlength="300" placeholder="e.g. update-cdn.evil-domain.com" autocomplete="off">
@@ -97,7 +97,7 @@
       </div>
       <div class="two">
         <div class="card">
-          <h2>IOC prefix search (trie)</h2>
+          <h2>Search known-bad list by prefix</h2>
           <form id="iocForm" class="inline">
             <label for="iocInput" class="sr">Prefix</label>
             <input id="iocInput" type="text" maxlength="300" placeholder="type a prefix, e.g. update" autocomplete="off">
@@ -106,8 +106,8 @@
           <div id="iocOut"></div>
         </div>
         <div class="card">
-          <h2>Wildcard command hunt</h2>
-          <p class="muted small">"." stands for exactly one unknown character, for example <code>p.wershell</code>.</p>
+          <h2>Wildcard command search</h2>
+          <p class="muted small">"." matches any one character, e.g. <code>p.wershell</code>.</p>
           <form id="patForm" class="inline">
             <label for="patInput" class="sr">Pattern</label>
             <input id="patInput" type="text" maxlength="200" placeholder="p.wershell" autocomplete="off">
@@ -134,7 +134,7 @@
         </div>
         <div class="card">
           <h2>Try it: edit link costs</h2>
-          <p class="muted small">Changing a cost re-runs max flow / min cut. A cost of 1,000,000 marks a link that must never be cut. Edits last until you reset or reload the data.</p>
+          <p class="muted small">Change a cost and the plan updates. Use 1,000,000 for a link that must never be cut.</p>
           <div id="linkTable"></div>
           <button type="button" id="resetLinks">Reset link costs</button>
         </div>
@@ -145,7 +145,7 @@
     <section id="tab-whatif" class="panel" hidden>
       <div class="card">
         <h2>What if this host were the only compromised one?</h2>
-        <p class="muted small">Each other host is treated in turn as the only compromised host. Internet-facing, unpatched hosts come first, then the hosts that cost most to contain.</p>
+        <p class="muted small">Shows the containment cost if each other host were the only one compromised. Riskiest hosts first.</p>
         <button type="button" id="loadWhatIf">Compute what-if table</button>
         <div id="whatIfOut"></div>
       </div>
@@ -156,7 +156,7 @@
       <div class="two">
         <form id="uploadForm" class="card">
           <h2>Use your own data</h2>
-          <p class="muted small">Choose the files, then upload. Everything is validated first; if a file is invalid, the current data stays as it was and the error names the file and line.</p>
+          <p class="muted small">Choose files and upload. Invalid files are rejected with the file and line, and your current data is kept.</p>
           <div class="filegrid">
             <label for="fAssets">assets.csv</label><input id="fAssets" type="file" accept=".csv,.txt">
             <label for="fEdges">network_edges.csv</label><input id="fEdges" type="file" accept=".csv,.txt">
@@ -172,11 +172,11 @@
         <div class="card">
           <h2>Input format and limits</h2>
           <ul class="plain small">
-            <li><code>assets.csv</code>: name,type,isolationCost[,internetFacing,patched]. Costs are whole numbers from 0 to 1,000,000.</li>
-            <li><code>network_edges.csv</code>: from,to,cost,bidirectional. Both hosts must exist in assets.</li>
-            <li><code>security_events.csv</code>: hour,host,eventType,count,indicator,command. Hour is 0 to 23, count is 0 or more, "-" means none.</li>
-            <li><code>iocs.txt</code>: one indicator per line; a trailing * makes it a prefix rule. <code>patterns.txt</code>: one pattern per line, "." is one character.</li>
-            <li>Each CSV starts with a header row. Lines starting with # are comments. At most 500 assets and 2 MB per upload.</li>
+            <li><code>assets.csv</code>: name,type,isolationCost[,internetFacing,patched]</li>
+            <li><code>network_edges.csv</code>: from,to,cost,bidirectional</li>
+            <li><code>security_events.csv</code>: hour,host,eventType,count,indicator,command ("-" = none)</li>
+            <li><code>iocs.txt</code>: one per line, trailing * = prefix. <code>patterns.txt</code>: one per line, "." = any character.</li>
+            <li>CSVs start with a header row. Costs 0 to 1,000,000, hours 0 to 23. Max 500 assets, 2 MB.</li>
           </ul>
           <button type="button" id="downloadReport">Download HTML report</button>
         </div>
@@ -186,8 +186,8 @@
     <!-- BENCHMARKS -->
     <section id="tab-bench" class="panel" hidden>
       <div class="card">
-        <h2>Benchmarks: each technique against a baseline at three sizes</h2>
-        <p class="muted small">Run on the server with seeded synthetic data. Every row also checks that the technique and the baseline return the same answer. The quick run takes about 15 seconds.</p>
+        <h2>Benchmarks</h2>
+        <p class="muted small">Compares each technique with a simple method on generated data. Answers are checked to match. Quick run: about 15 seconds.</p>
         <div class="inline">
           <button type="button" id="runBench" class="primary">Run quick benchmark</button>
           <button type="button" id="runBenchFull">Run full benchmark</button>
@@ -198,7 +198,7 @@
     </section>
   </main>
 
-  <footer class="muted small">All data is synthetic. Results are experiments on that data, not proof of real-world protection.</footer>
+  <footer class="muted small">All data is synthetic.</footer>
   <script src="/app.js"></script>
 </body>
 </html>

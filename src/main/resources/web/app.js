@@ -168,7 +168,7 @@ function renderIncidents(r) {
       el('td', { class: 'num' }, i.score),
       el('td', {}, el('span', { class: 'pri ' + i.priority }, i.priority)),
       el('td', { class: 'num' }, i.windowAlerts),
-      el('td', {}, i.reasons.join('; ')));
+      el('td', { title: i.reasons.join('; ') }, i.reasons.slice(0, 2).join('; ') + (i.reasons.length > 2 ? ' (+' + (i.reasons.length - 2) + ' more)' : '')));
     const pick = () => { state.selected = i.host; renderIncidents(state.result); renderDetail(); showTab('investigate'); };
     tr.addEventListener('click', pick);
     tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') pick(); });
