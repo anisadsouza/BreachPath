@@ -562,8 +562,24 @@ public final class DashboardApp extends Application {
             setStatus("Analysed. Incident tree balanced: " + model.isBalanced(), true);
             refreshAll(null);
         } catch (IllegalArgumentException ex) {
-            setStatus("Error: " + ex.getMessage(), false);
+            setStatus("Error: " + ex.getMessage() + ". " + lastAnalysisNote(), false);
         }
+    }
+
+    /** Tells the user that the screens still show the previous analysis after a rejected request. */
+    private String lastAnalysisNote() {
+        if (!model.isAnalysed()) {
+            return "";
+        }
+        List<String> from = new ArrayList<>();
+        for (int i : model.sources()) {
+            from.add(model.topology().asset(i).name());
+        }
+        List<String> to = new ArrayList<>();
+        for (int i : model.targets()) {
+            to.add(model.topology().asset(i).name());
+        }
+        return "Screens still show the last analysis (" + String.join(", ", from) + " to " + String.join(", ", to) + ").";
     }
 
     private void addEvidence() {
