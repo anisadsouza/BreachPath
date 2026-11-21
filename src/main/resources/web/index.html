@@ -57,7 +57,7 @@
           </div>
           <div class="card">
             <h2>Network map</h2>
-            <p class="muted small">Red outline: compromised. Square: protected target.</p>
+            <p class="muted small">Red outline: compromised. Square: protected target. Pink lines: every route the attacker could use.</p>
             <div id="mapOverview" class="map"></div>
             <h3>Attack paths</h3>
             <div id="paths"></div>
@@ -129,7 +129,7 @@
             <label for="scenarioPick">Show scenario</label>
             <select id="scenarioPick"><option value="A">A: compromised hosts stay online</option><option value="B">B: isolating them is allowed</option></select>
           </div>
-          <p class="muted small">Dashed red links are blocked; hosts with a cross are isolated.</p>
+          <p class="muted small">Pink lines: every route to the targets. Dashed dark lines: blocked by the plan. Cross: isolated host.</p>
           <div id="mapCut" class="map"></div>
         </div>
         <div class="card">

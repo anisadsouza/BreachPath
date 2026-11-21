@@ -73,6 +73,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -291,7 +293,8 @@ public final class DashboardApp extends Application {
         countAxis.setLabel("alerts");
         chart.setPrefHeight(190);
 
-        VBox left = new VBox(8, heading("Network map"), overviewGraph.holder, legend(false));
+        VBox left = new VBox(8, heading("Network map"), overviewGraph.holder, legend(false),
+                muted("Red and pink lines are every route the attacker could use. The Containment tab shows which links the plan blocks."));
         left.setPadding(new Insets(14, 8, 6, 16));
         VBox.setVgrow(overviewGraph.holder, Priority.ALWAYS);
 
@@ -426,7 +429,8 @@ public final class DashboardApp extends Application {
         VBox top = new VBox(8, choices);
         top.setPadding(new Insets(14, 16, 4, 16));
 
-        VBox left = new VBox(8, containmentGraph.holder, legend(true));
+        VBox left = new VBox(8, containmentGraph.holder, legend(true),
+                muted("The plan blocks every route to the targets, not only the shortest one. Dashed lines are blocked."));
         left.setPadding(new Insets(6, 8, 6, 16));
         VBox.setVgrow(containmentGraph.holder, Priority.ALWAYS);
 
@@ -1435,9 +1439,10 @@ public final class DashboardApp extends Application {
     private static HBox legend(boolean withCut) {
         HBox row1 = new HBox(18);
         row1.setAlignment(Pos.CENTER_LEFT);
-        row1.getChildren().add(legendItem(SEV_CRIT, "Shortest attack path"));
+        row1.getChildren().add(legendItem(SEV_CRIT, "Shortest routes (fewest hops)"));
+        row1.getChildren().add(legendItem("#e6a6a9", "Other possible route"));
         if (withCut) {
-            row1.getChildren().add(legendItem(INK, "Cut: blocked link or isolated host"));
+            row1.getChildren().add(legendItem(INK, "Blocked by the plan"));
         }
         row1.getChildren().add(legendItem(TARGET, "Protected target"));
         row1.getChildren().add(legendItem("#ffffff; -fx-border-color: " + INK + "; -fx-border-width: 3", "Compromised host"));
@@ -1473,6 +1478,111 @@ public final class DashboardApp extends Application {
         private boolean hasUnreachable;
         private double[] nx = new double[0];
         private double[] ny = new double[0];
+
+        /**
+         * Links that lie on some route from a compromised host to a protected target. A link a to b counts when
+         * a can be reached from a compromised host without passing b, and a target can be reached from b without
+         * passing a. This leaves out dead-end branches that only loop back.
+         */
+        private Set<Long> routeEdges(int n) {
+            Topology topo = model.topology();
+            Set<Long> out = new HashSet<>();
+            for (Link l : topo.links()) {
+                boolean fwd = onRoute(topo, n, l.from(), l.to());
+                boolean back = l.bidirectional() && onRoute(topo, n, l.to(), l.from());
+                if (fwd || back) {
+                    out.add(edgeKey(n, l.from(), l.to()));
+                }
+            }
+            return out;
+        }
+
+        /** Links on any route of the shortest length to a target (all tied routes, not just one). */
+        private Set<Long> shortestEdges(int n) {
+            Topology topo = model.topology();
+            int[] fromSrc = hops(topo, n, model.sources(), true);
+            Set<Long> out = new HashSet<>();
+            for (int t : model.targets()) {
+                if (fromSrc[t] < 0) {
+                    continue;
+                }
+                int[] toT = hops(topo, n, List.of(t), false);
+                for (Link l : topo.links()) {
+                    if (steps(fromSrc, toT, l.from(), l.to(), fromSrc[t])
+                            || (l.bidirectional() && steps(fromSrc, toT, l.to(), l.from(), fromSrc[t]))) {
+                        out.add(edgeKey(n, l.from(), l.to()));
+                    }
+                }
+            }
+            return out;
+        }
+
+        private boolean steps(int[] fromSrc, int[] toT, int a, int b, int best) {
+            return fromSrc[a] >= 0 && toT[b] >= 0 && fromSrc[a] + 1 + toT[b] == best;
+        }
+
+        /** Number of links from the start set to each host (forward or backward); -1 when not reachable. */
+        private int[] hops(Topology topo, int n, Collection<Integer> start, boolean forward) {
+            int[] dist = new int[n];
+            Arrays.fill(dist, -1);
+            Deque<Integer> queue = new ArrayDeque<>();
+            for (int s : start) {
+                dist[s] = 0;
+                queue.add(s);
+            }
+            while (!queue.isEmpty()) {
+                int u = queue.poll();
+                for (Link l : topo.links()) {
+                    int next = -1;
+                    if (forward) {
+                        if (l.from() == u) next = l.to();
+                        else if (l.bidirectional() && l.to() == u) next = l.from();
+                    } else {
+                        if (l.to() == u) next = l.from();
+                        else if (l.bidirectional() && l.from() == u) next = l.to();
+                    }
+                    if (next >= 0 && dist[next] < 0) {
+                        dist[next] = dist[u] + 1;
+                        queue.add(next);
+                    }
+                }
+            }
+            return dist;
+        }
+
+        private boolean onRoute(Topology topo, int n, int a, int b) {
+            return spread(topo, n, model.sources(), true, b)[a] && spread(topo, n, model.targets(), false, a)[b];
+        }
+
+        /** Hosts reachable from the start set, following links forward (or backward), never entering avoid. */
+        private boolean[] spread(Topology topo, int n, Collection<Integer> start, boolean forward, int avoid) {
+            boolean[] seen = new boolean[n];
+            Deque<Integer> queue = new ArrayDeque<>();
+            for (int s : start) {
+                if (s != avoid) {
+                    seen[s] = true;
+                    queue.add(s);
+                }
+            }
+            while (!queue.isEmpty()) {
+                int u = queue.poll();
+                for (Link l : topo.links()) {
+                    int next = -1;
+                    if (forward) {
+                        if (l.from() == u) next = l.to();
+                        else if (l.bidirectional() && l.to() == u) next = l.from();
+                    } else {
+                        if (l.to() == u) next = l.from();
+                        else if (l.bidirectional() && l.from() == u) next = l.to();
+                    }
+                    if (next >= 0 && next != avoid && !seen[next]) {
+                        seen[next] = true;
+                        queue.add(next);
+                    }
+                }
+            }
+            return seen;
+        }
 
         GraphView(boolean showCut) {
             this.showCut = showCut;
@@ -1606,12 +1716,8 @@ public final class DashboardApp extends Application {
                 g.strokeLine(x, 34, x, h - 14);
             }
 
-            Set<Long> pathEdges = new HashSet<>();
-            for (List<Integer> p : model.attackPaths()) {
-                for (int i = 0; i + 1 < p.size(); i++) {
-                    pathEdges.add(edgeKey(n, p.get(i), p.get(i + 1)));
-                }
-            }
+            Set<Long> pathEdges = shortestEdges(n);
+            Set<Long> routeEdges = routeEdges(n);
             ContainmentPlan plan = showCut ? model.plan(scenario) : null;
             List<int[]> blocked = model.blockedLinks(plan);
             Set<Integer> isolated = model.isolatedHosts(plan);
@@ -1622,6 +1728,13 @@ public final class DashboardApp extends Application {
             g.setLineWidth(1.2);
             for (Link l : topo.links()) {
                 g.strokeLine(nx[l.from()], ny[l.from()], nx[l.to()], ny[l.to()]);
+            }
+            g.setStroke(Color.web("#e6a6a9"));
+            g.setLineWidth(3);
+            for (Link l : topo.links()) {
+                if (routeEdges.contains(edgeKey(n, l.from(), l.to()))) {
+                    g.strokeLine(nx[l.from()], ny[l.from()], nx[l.to()], ny[l.to()]);
+                }
             }
             g.setStroke(Color.web(SEV_CRIT));
             g.setLineWidth(4);
