@@ -15,7 +15,8 @@ All data is synthetic. The results are experiments on that data, not proof of re
 1. Loads a network of hosts and links, a log of hourly alert counts, known indicators of compromise
    (IOCs) and wildcard hunting patterns from the `data/` folder, or from files uploaded in the
    browser. Bad input is rejected with the file, line and column of the problem.
-2. Finds the shortest attack path from each compromised host to each protected target.
+2. Finds the shortest attack paths (every route of the fewest hops) from each compromised host to each
+   protected target, and shows all other possible routes on the network map.
 3. Searches the evidence: IOC screening and prefix search, wildcard command patterns, and alert
    totals and peaks over a chosen time window.
 4. Scores every host with an explainable risk score and keeps the incidents ordered by risk.
@@ -98,9 +99,21 @@ Priority labels: 80 and above is Critical, 60 to 79 High, 30 to 59 Medium, below
 Each host is split into an "in" and an "out" node, joined by an edge whose capacity is the cost of
 isolating that host. A link becomes an edge whose capacity is the cost of blocking it. A cut
 through a host edge means "isolate this host", and a cut through a link edge means "block this
-link". Targets can never be isolated. A link cost of 1,000,000 (the `INF` constant in
+link". Targets can never be isolated. A cost means how disruptive it is to cut that host or link, so
+the plan is the cheapest total disruption. A link cost of 1,000,000 (the `INF` constant in
 `ContainmentPlanner`) marks a link that must never be cut. If an uncuttable path reaches a target,
 the plan reports that no finite-cost containment exists.
+
+The plan cuts every route from the compromised hosts to the targets, not only the shortest one. The
+network map draws the shortest routes in dark red and all other possible routes in pink; the
+Containment view draws the links the plan blocks as dashed lines. Each plan is then checked
+independently: the chosen links and hosts are removed and a search confirms that no target can still be
+reached.
+
+Complexity: Edmonds-Karp needs O(V'E') augmentations, where V' = 2n + 2 is the number of nodes of the
+split graph and E' its edges. The flow network is stored as a capacity matrix, so each breadth-first
+search costs O(V'^2) and the total is O(V'^3 E') in the worst case with O(V'^2) space. (With adjacency
+lists the textbook bound is O(V E^2).) This is why a network is limited to 500 assets.
 
 ## Inputs, outputs, constraints and failure cases
 
@@ -165,10 +178,10 @@ for the tests).
     mvn package
     java -cp target/breachpath-1.0.jar com.breachpath.web.WebApp
 
-Then open http://127.0.0.1:8090/ in a browser. Optional arguments and settings (none is a secret):
+Then open http://127.0.0.1:8080/ in a browser. Optional arguments and settings (none is a secret):
 
     java -cp target/breachpath-1.0.jar com.breachpath.web.WebApp [dataDir] [port]
-    BREACHPATH_DATA=data PORT=8090 BREACHPATH_HOST=127.0.0.1
+    BREACHPATH_DATA=data PORT=8080 BREACHPATH_HOST=127.0.0.1
 
 The browser only displays results. Every algorithm runs in the Java backend. The tabs are:
 
@@ -218,8 +231,8 @@ Examples:
       -d '{"compromised":["WS-Alice"],"targets":["DB-PROD"],"fromHour":0,"toHour":23}' \
       http://127.0.0.1:8080/api/analyse
 
-    curl -s "http://127.0.0.1:8090/api/ioc/screen?indicator=185.220.101.7"
-    curl -s "http://127.0.0.1:8090/api/ioc/screen?indicator=clean.example.org"
+    curl -s "http://127.0.0.1:8080/api/ioc/screen?indicator=185.220.101.7"
+    curl -s "http://127.0.0.1:8080/api/ioc/screen?indicator=clean.example.org"
 
 The first screening call answers `"bloom":"possibly present"` with `"exactConfirmed":true`. The
 second answers `"bloom":"definitely absent"` and the exact check is skipped.
@@ -241,7 +254,9 @@ percentiles. With `benchmark` it also prints the performance evaluation and the 
 
 The desktop dashboard shows the incident ranking, containment plans, what-if table and a panel per
 data structure. Compromised hosts and targets are chosen from drop-downs with tick boxes. The
-Export report button saves the analysis as one HTML file.
+Export report button saves the analysis as one HTML file. The network map draws the shortest
+routes in dark red and every other possible route in pink. If a request is rejected (for example an
+empty selection), the status line explains why and says the screens still show the last analysis.
 
 ### Without Maven
 
@@ -270,19 +285,21 @@ which has no JavaFX code, so it can be tested without a window.
 
 ## Results
 
-Example results from the benchmark run in a Linux container. Each time is the median of 5 runs after
-one warm-up run, on seeded synthetic data. Absolute times on a laptop will differ; the ratios are
-the point. The Benchmarks tab and `benchmark` console mode reproduce them.
+Results of the benchmark run on an Apple-silicon MacBook Air (macOS, Java 17.0.12). Each time is the
+median of 5 runs after one warm-up run, on seeded synthetic data, and every technique result is checked
+to equal its baseline. Absolute times on another machine will differ; the ratios are the point. The
+Benchmarks tab and `benchmark` console mode reproduce them.
 
-| Technique | Baseline | Sizes | Result |
+| Technique | Baseline | Sizes | Result (speed-up at each size) |
 |---|---|---|---|
-| Edmonds-Karp max flow | brute-force minimum cut (200 random graphs) | 100, 200, 400 nodes | 0 mismatches; 400 nodes and 2,396 edges in about 5 ms; brute force is limited to 22 edges |
-| Randomized Quickselect | full sort, then index | 10,000 / 50,000 / 200,000 values | 2.7x, 12.1x, 13.2x faster; 1.1 to 3.2 comparisons per element |
-| Bloom filter screen + trie | trie lookup only | 1,000 / 10,000 / 50,000 indicators | identical answers; false-positive rate 0.91% to 1.05% (target 1%); about 50% of lookups skip the trie; no speed-up in memory |
-| Prefix trie | linear scan with `startsWith` | 5,000 / 20,000 / 50,000 words | 66x, 282x, 482x faster |
-| Wildcard dictionary | naive scan | 2,000 / 10,000 / 25,000 words | 16x, 71x, 230x faster |
-| Segment tree | naive range scan | 5,000 / 25,000 / 100,000 slots | 2.6x, 15x, 37x faster |
-| Red-black tree | `java.util.TreeMap` | 5,000 / 20,000 / 50,000 keys | all invariants hold; similar speed, as expected |
+| Edmonds-Karp max flow | brute-force minimum cut (200 random graphs) | 100, 200, 400 nodes | 0 mismatches; 400 nodes and 2,396 edges in 2.70 ms |
+| Edmonds-Karp max flow | brute-force subsets | 6 / 9 / 12 nodes (up to 4,194,304 subsets) | below 0.01 ms against 0.02 / 14.24 / 322.19 ms |
+| Randomized Quickselect | full sort, then index | 10,000 / 50,000 / 200,000 values | 1.5x, 19.7x, 13.3x; 1.1 to 3.2 comparisons per element |
+| Bloom filter screen + trie | trie lookup only | 1,000 / 10,000 / 50,000 indicators | identical answers; false-positive rate 1.05%, 0.91%, 0.99% (target 1%); about 50% of lookups skip the trie; no speed-up in memory (0.8x, 0.7x, 0.8x) |
+| Prefix trie | linear scan with `startsWith` | 5,000 / 20,000 / 50,000 words | 39.7x, 167.7x, 261.0x |
+| Wildcard dictionary | naive scan | 2,000 / 10,000 / 25,000 words | 16.0x, 45.8x, 132.7x |
+| Segment tree | naive range scan | 5,000 / 25,000 / 100,000 slots | 3.6x, 22.1x, 73.7x |
+| Red-black tree | `java.util.TreeMap` | 5,000 / 20,000 / 50,000 keys | all invariants hold; same speed as `TreeMap` (1.0x, 0.9x, 1.0x), as expected |
 
 When each technique helps: the trie, dictionary and segment tree pay off as the data grows and are
 unnecessary for a handful of items (the sample alert log has 24 slots per host). Quickselect helps
@@ -308,6 +325,7 @@ costly, not when it is an in-memory lookup.
     ├── pom.xml
     ├── data/                  assets, links, alert log, IOCs, patterns
     ├── docs/screenshots/      screenshots of the web application
+    ├── docs/demo/             saved console, benchmark and test output
     ├── src/main/java/com/breachpath/
     │   ├── model/             Asset, Link, Topology, SecurityEvent, Incident
     │   ├── graph/             flow network, Edmonds-Karp, min cut, brute-force check
@@ -323,7 +341,30 @@ costly, not when it is an in-memory lookup.
     ├── src/main/resources/    web frontend, stylesheet and bundled fonts
     └── src/test/java/com/breachpath/
 
-## Screenshots
+## Demonstration
+
+Run the sample case (WS-Alice compromised, DB-PROD protected):
+
+    java -jar target/breachpath-1.0.jar data WS-Alice DB-PROD
+
+Expected output on the sample data: attack path WS-Alice, WEB-01, APP-01, DB-PROD (3 hops); 11
+incidents, with WS-Alice (100), AD-01 (87), FILE-01 (87), WEB-01 (81) and WS-Bob (71) at the top;
+median risk 62 and 90th percentile 87; Scenario A costs 18 (block WS-Alice to WEB-01 and
+WS-Alice to FILE-01), Scenario B costs 5 (isolate WS-Alice); both plans verified.
+
+Error handling you can try in the web application (Data tab) or the API:
+
+- upload `assets.csv` with a cost of `oops`: rejected with the file and line, and the old data is kept;
+- choose the same host as compromised and as target: rejected with a clear message;
+- an hour window of 20 to 3: rejected.
+
+Saved outputs of one full run (console report, benchmarks, test results) are kept in `docs/demo/`:
+
+    java -jar target/breachpath-1.0.jar data WS-Alice DB-PROD > docs/demo/console_output.txt
+    java -jar target/breachpath-1.0.jar data WS-Alice DB-PROD benchmark > docs/demo/benchmark_output.txt
+    mvn test > docs/demo/test_output.txt
+
+### Screenshots
 
 ![Overview](docs/screenshots/overview.png)
 ![Investigation](docs/screenshots/investigation.png)
