@@ -485,7 +485,7 @@ public final class DashboardApp extends Application {
         details.setAnimated(false);
 
         VBox content = new VBox(18,
-                new VBox(8, heading("The five concepts"), bar, summaryBox),
+                new VBox(8, heading("Benchmarks: each technique against a baseline"), bar, summaryBox),
                 details);
         content.setPadding(new Insets(16, 18, 16, 18));
         ScrollPane scroll = new ScrollPane(content);

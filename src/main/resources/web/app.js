@@ -106,10 +106,20 @@ const checked = (group) => [...document.querySelectorAll('input[name="' + group 
 // ---- analysis ----------------------------------------------------------------------------
 
 $('analyseForm').addEventListener('submit', guard(async () => {
-  state.result = await post('/api/analyse', {
-    compromised: checked('src'), targets: checked('tgt'),
-    fromHour: Number($('fromHour').value), toHour: Number($('toHour').value),
-  });
+  try {
+    state.result = await post('/api/analyse', {
+      compromised: checked('src'), targets: checked('tgt'),
+      fromHour: Number($('fromHour').value), toHour: Number($('toHour').value),
+    });
+  } catch (e) {
+    // a rejected request must not leave the previous analysis on screen as if it were current
+    state.result = null; state.selected = null; state.whatIf = null;
+    $('overviewBody').hidden = true; $('overviewEmpty').hidden = false;
+    $('containBody').hidden = true; $('containEmpty').hidden = false;
+    clear($('whatIfOut'));
+    renderDetail();
+    throw e;
+  }
   state.selected = null;
   state.whatIf = null;
   clear($('whatIfOut'));
