@@ -11,6 +11,7 @@ import com.breachpath.rbtree.RedBlackTree;
 import com.breachpath.model.Topology;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
@@ -52,6 +53,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.StrokeLineCap;
@@ -184,11 +186,11 @@ public final class DashboardApp extends Application {
         }
 
         TabPane tabs = new TabPane(
-                tab("Overview", buildOverview()),
-                tab("Investigation", buildInvestigation()),
-                tab("Containment", buildContainment()),
-                tab("What-if", buildWhatIf()),
-                tab("Under the hood", buildInternals()),
+                tab("Overview", guarded(buildOverview())),
+                tab("Investigation", guarded(buildInvestigation())),
+                tab("Containment", guarded(buildContainment())),
+                tab("What-if", guarded(buildWhatIf())),
+                tab("Under the hood", guarded(buildInternals())),
                 tab("Benchmarks", buildBenchmarks()));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
@@ -230,6 +232,22 @@ public final class DashboardApp extends Application {
         }
         Font f = Font.loadFont(url.toExternalForm(), 12);
         return f == null ? null : f.getFamily();
+    }
+
+    /** True after a rejected request: the screens are covered, because the last analysis no longer matches the selection. */
+    private final SimpleBooleanProperty stale = new SimpleBooleanProperty(false);
+
+    /** Wraps a tab so that a cover with a short message hides its content while {@link #stale} is true. */
+    private Node guarded(Node content) {
+        Label message = new Label("No analysis to show. Choose at least one compromised host and one protected target "
+                + "(different hosts), then press Analyse.");
+        message.setWrapText(true);
+        message.setMaxWidth(480);
+        font(message, bodyFont, FontWeight.NORMAL, 15);
+        StackPane cover = new StackPane(message);
+        cover.setStyle("-fx-background-color: #f7f8fa;");
+        cover.visibleProperty().bind(stale);
+        return new StackPane(content, cover);
     }
 
     private static Tab tab(String title, Node content) {
@@ -559,27 +577,13 @@ public final class DashboardApp extends Application {
         try {
             model.analyse(compromisedPicker.csv(), targetPicker.csv(),
                     fromSpinner.getValue(), toSpinner.getValue());
+            stale.set(false);
             setStatus("Analysed. Incident tree balanced: " + model.isBalanced(), true);
             refreshAll(null);
         } catch (IllegalArgumentException ex) {
-            setStatus("Error: " + ex.getMessage() + ". " + lastAnalysisNote(), false);
+            stale.set(true);
+            setStatus("Error: " + ex.getMessage(), false);
         }
-    }
-
-    /** Tells the user that the screens still show the previous analysis after a rejected request. */
-    private String lastAnalysisNote() {
-        if (!model.isAnalysed()) {
-            return "";
-        }
-        List<String> from = new ArrayList<>();
-        for (int i : model.sources()) {
-            from.add(model.topology().asset(i).name());
-        }
-        List<String> to = new ArrayList<>();
-        for (int i : model.targets()) {
-            to.add(model.topology().asset(i).name());
-        }
-        return "Screens still show the last analysis (" + String.join(", ", from) + " to " + String.join(", ", to) + ").";
     }
 
     private void addEvidence() {
@@ -949,6 +953,10 @@ public final class DashboardApp extends Application {
     // ---- export report ----------------------------------------------------------------------
 
     private void exportReport() {
+        if (stale.get()) {
+            setStatus("Nothing to export: run a valid analysis first.", false);
+            return;
+        }
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Save report");
         chooser.setInitialFileName("breachpath-report.html");

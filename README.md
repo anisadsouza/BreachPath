@@ -256,7 +256,8 @@ The desktop dashboard shows the incident ranking, containment plans, what-if tab
 data structure. Compromised hosts and targets are chosen from drop-downs with tick boxes. The
 Export report button saves the analysis as one HTML file. The network map draws the shortest
 routes in dark red and every other possible route in pink. If a request is rejected (for example an
-empty selection), the status line explains why and says the screens still show the last analysis.
+empty selection, or the same host as source and target), the status line explains why and the screens
+are covered with a message until a valid analysis is run.
 
 ### Without Maven
 
