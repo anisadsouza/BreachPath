@@ -32,6 +32,8 @@ import javafx.scene.control.CustomMenuItem;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Spinner;
@@ -162,6 +164,8 @@ public final class DashboardApp extends Application {
 
     // containment
     private final GraphView containmentGraph = new GraphView(true);
+    /** One sentence under the containment map: how many hosts the attacker can still reach after the plan. */
+    private final Label cutSummary = muted("");
     private final ToggleButton scenarioA = new ToggleButton();
     private final ToggleButton scenarioB = new ToggleButton();
     private final VBox planBox = new VBox(10);
@@ -273,6 +277,7 @@ public final class DashboardApp extends Application {
         for (int i = 0; i < model.topology().size(); i++) {
             names.add(model.topology().asset(i).name());
         }
+        targetPicker.excludeFrom = compromisedPicker;
         compromisedPicker.setHosts(names, names.contains("WS-Alice") ? Set.of("WS-Alice") : Set.of(names.get(0)));
         targetPicker.setHosts(names, names.contains("DB-PROD") ? Set.of("DB-PROD")
                 : Set.of(names.get(names.size() - 1)));
@@ -448,7 +453,9 @@ public final class DashboardApp extends Application {
         top.setPadding(new Insets(14, 16, 4, 16));
 
         VBox left = new VBox(8, containmentGraph.holder, legend(true),
-                muted("The plan blocks every route to the targets, not only the shortest one. Dashed lines are blocked."));
+                muted("The plan blocks every route to the targets, not only the shortest one. Dashed lines are blocked."),
+                cutSummary);
+        cutSummary.setWrapText(true);
         left.setPadding(new Insets(6, 8, 6, 16));
         VBox.setVgrow(containmentGraph.holder, Priority.ALWAYS);
 
@@ -906,6 +913,8 @@ public final class DashboardApp extends Application {
     private static final class HostPicker {
         final MenuButton button = new MenuButton();
         private final List<CheckBox> items = new ArrayList<>();
+        /** When set, the menu gets a shortcut that ticks every host except those ticked in this other picker. */
+        HostPicker excludeFrom;
 
         HostPicker() {
             button.setMinWidth(170);
@@ -915,6 +924,16 @@ public final class DashboardApp extends Application {
         void setHosts(List<String> names, Set<String> selected) {
             items.clear();
             button.getItems().clear();
+            if (excludeFrom != null) {
+                MenuItem all = new MenuItem("Protect all other systems");
+                all.setOnAction(e -> {
+                    Set<String> skip = new HashSet<>(Arrays.asList(excludeFrom.csv().split(",")));
+                    Set<String> rest = new LinkedHashSet<>(names);
+                    rest.removeAll(skip);
+                    setSelected(rest);
+                });
+                button.getItems().addAll(all, new SeparatorMenuItem());
+            }
             for (String name : names) {
                 CheckBox box = new CheckBox(name);
                 box.setSelected(selected.contains(name));
@@ -1787,6 +1806,45 @@ public final class DashboardApp extends Application {
                 g.strokeLine(mx - 8, my + 8, mx + 8, my - 8);
             }
 
+            // what the attacker can still reach once the plan is applied (containment map only)
+            String[] status = new String[n];
+            if (showCut) {
+                boolean[] reach = reachAfterPlan(topo, n, blocked, isolated);
+                boolean any = plan != null && plan.feasible();
+                int others = 0;
+                int open = 0;
+                boolean targetOpen = false;
+                List<String> openNames = new ArrayList<>();
+                for (int i = 0; i < n; i++) {
+                    boolean src = model.sources().contains(i);
+                    boolean tgt = model.targets().contains(i);
+                    if (!any) {
+                        break;
+                    }
+                    if (isolated.contains(i)) {
+                        status[i] = "isolated";
+                    } else if (src) {
+                        status[i] = "compromised";
+                    } else if (reach[i]) {
+                        status[i] = tgt ? "TARGET REACHABLE" : "still reachable";
+                    } else {
+                        status[i] = tgt ? "protected" : "cut off";
+                    }
+                    if (!src) {
+                        others++;
+                        if (reach[i]) {
+                            open++;
+                            targetOpen |= tgt;
+                            openNames.add(topo.asset(i).name());
+                        }
+                    }
+                }
+                cutSummary.setText(plan == null ? "" : !any ? "No plan is possible for this selection."
+                        : "After this plan: " + (others - open) + " of " + others + " other hosts are cut off from the attacker, "
+                        + open + " still reachable" + (open > 0 ? " (" + String.join(", ", openNames) + ")" : "")
+                        + ". Protected targets: " + (targetOpen ? "NOT all safe." : "all safe."));
+            }
+
             g.setTextAlign(TextAlignment.CENTER);
             for (int i = 0; i < n; i++) {
                 String name = topo.asset(i).name();
@@ -1832,7 +1890,46 @@ public final class DashboardApp extends Application {
                 g.strokeText(name, nx[i], ly);
                 g.setFill(Color.web(INK));
                 g.fillText(name, nx[i], ly);
+                if (status[i] != null) {
+                    boolean good = status[i].equals("cut off") || status[i].equals("protected");
+                    boolean bad = status[i].equals("still reachable") || status[i].equals("TARGET REACHABLE");
+                    g.setFont(Font.font(bodyFont, bad ? FontWeight.BOLD : FontWeight.NORMAL, 10.5));
+                    g.setFill(Color.web(good ? "#2e7d4f" : (bad ? "#a4262c" : "#5b6670")));
+                    g.fillText(status[i], nx[i], ly + 13);
+                }
             }
+        }
+
+        /** Hosts the attacker can still reach after the plan: blocked links are removed and isolated hosts cannot be entered. */
+        private boolean[] reachAfterPlan(Topology topo, int n, List<int[]> blocked, Set<Integer> isolated) {
+            Set<Long> blockedDir = new HashSet<>();
+            for (int[] b : blocked) {
+                blockedDir.add((long) b[0] * n + b[1]);
+            }
+            boolean[] reach = new boolean[n];
+            Deque<Integer> queue = new ArrayDeque<>();
+            for (int s : model.sources()) {
+                if (!isolated.contains(s)) {
+                    reach[s] = true;
+                    queue.add(s);
+                }
+            }
+            while (!queue.isEmpty()) {
+                int u = queue.poll();
+                for (Link l : topo.links()) {
+                    int v = -1;
+                    if (l.from() == u) {
+                        v = l.to();
+                    } else if (l.bidirectional() && l.to() == u) {
+                        v = l.from();
+                    }
+                    if (v >= 0 && !reach[v] && !isolated.contains(v) && !blockedDir.contains((long) u * n + v)) {
+                        reach[v] = true;
+                        queue.add(v);
+                    }
+                }
+            }
+            return reach;
         }
     }
 

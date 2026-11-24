@@ -101,6 +101,10 @@ function fillChecklist(box, group, defaults) {
     box.appendChild(el('label', {}, cb, host.name));
   }
 }
+$('tgtAll').addEventListener('click', () => {
+  const src = new Set(checked('src'));
+  document.querySelectorAll('input[name="tgt"]').forEach((c) => { c.checked = !src.has(c.value); });
+});
 const checked = (group) => [...document.querySelectorAll('input[name="' + group + '"]:checked')].map((c) => c.value);
 
 // ---- analysis ----------------------------------------------------------------------------
@@ -385,171 +389,37 @@ function drawMap(box, r, risk, scenario) {
   };
   const step = (a, b) => spread(r.compromised, true, b).has(a) && spread(r.targets, false, a).has(b);
   const onRoute = (l) => step(l.from, l.to) || (l.bidirectional && step(l.to, l.from));
-  const svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Alerts per hour' });
-  values.forEach((v, h) => {
-    const bh = (H - pad - 8) * v / max;
-    const bar = sv('rect', { x: pad + h * bw + 1, y: H - pad - bh, width: bw - 2, height: bh, class: 'bar' + (h >= from && h <= to ? ' in' : '') });
-    bar.appendChild(sv('title', {}, 'hour ' + h + ': ' + v + ' alerts'));
-    svg.appendChild(bar);
-    if (h % 3 === 0) svg.appendChild(sv('text', { x: pad + h * bw + bw / 2, y: H - 6, 'text-anchor': 'middle', 'font-size': 10 }, h));
-  });
-  svg.appendChild(sv('text', { x: 0, y: 10, 'font-size': 10 }, max));
-  return el('div', { class: 'chart' }, svg, el('p', { class: 'muted small' }, 'Alerts per hour; dark bars are inside the analysis window.'));
-}
-
-$('evidenceForm').addEventListener('submit', guard(async () => {
-  const out = await post('/api/incidents/evidence', { host: state.selected, hour: Number($('evHour').value), delta: Number($('evDelta').value) });
-  applyIncidents(out);
-  banner('Evidence added: the incident was re-scored and moved in the tree.', true);
-}));
-$('closeIncident').addEventListener('click', guard(async () => {
-  const out = await post('/api/incidents/close', { host: state.selected });
-  state.selected = null;
-  applyIncidents(out);
-}));
-function applyIncidents(out) {
-  state.result.incidents = out.incidents;
-  state.result.riskStats = out.riskStats;
-  state.result.treeBalanced = out.treeBalanced;
-  renderStats(state.result);
-  renderIncidents(state.result);
-  drawMap($('mapOverview'), state.result, riskByHost(state.result), null);
-  renderDetail();
-}
-
-$('screenForm').addEventListener('submit', guard(async () => {
-  const out = await api('/api/ioc/screen?indicator=' + encodeURIComponent($('screenInput').value));
-  const verdict = out.known ? 'Known indicator' : 'Not a known indicator';
-  const exactText = !out.bloomPossible ? 'skipped (the filter already ruled it out)'
-    : out.exactConfirmed ? 'confirmed' : 'rejected (this was a Bloom false positive)';
-  add(clear($('screenOut')), [
-    el('ol', { class: 'plain' },
-      el('li', {}, 'Bloom filter: ', el('strong', {}, out.bloom)),
-      el('li', {}, 'Exact trie check: ', el('strong', {}, exactText)),
-      el('li', {}, 'Prefix rule: ', el('strong', {}, out.prefixRuleMatch ? 'matches' : 'no match'))),
-    el('p', {}, el('span', { class: 'tag ' + (out.known ? 'bad' : 'ok') }, verdict)),
-    el('p', { class: 'muted small' }, out.explanation),
-  ]);
-  renderBloomStats(out.stats);
-}));
-function renderBloomStats(b) {
-  $('bloomStats').textContent = 'Filter: ' + fmt(b.bits, 0) + ' bits, ' + b.hashes + ' hash functions, ' + b.items + ' indicators, target false-positive rate '
-    + fmt(b.targetRate * 100, 2) + '%. Lookups so far: ' + b.lookups + ', skipped by the filter: ' + b.rejectedByFilter
-    + ', false positives caught by the exact check: ' + b.falsePositives + '.';
-}
-
-$('iocForm').addEventListener('submit', guard(async () => {
-  const out = await api('/api/ioc/search?prefix=' + encodeURIComponent($('iocInput').value));
-  const box = clear($('iocOut'));
-  box.appendChild(el('p', { class: 'muted small' }, 'Matches left after each character typed: ' + (out.narrowing.length ? out.narrowing.join(' > ') : '(none typed)')));
-  if (!out.matches.length) box.appendChild(el('p', {}, 'No stored indicator starts with that prefix.'));
-  else box.appendChild(el('ul', { class: 'plain mono' }, out.matches.map((m) => el('li', {}, m))));
-}));
-$('patForm').addEventListener('submit', guard(async () => {
-  const out = await api('/api/patterns?pattern=' + encodeURIComponent($('patInput').value));
-  const box = clear($('patOut'));
-  if (out.patterns) {
-    box.appendChild(el('p', { class: 'muted small' }, 'No pattern typed, so these are the patterns from patterns.txt:'));
-    box.appendChild(el('ul', { class: 'plain mono' }, out.patterns.map((p) => el('li', {}, p.pattern + ' -> ' + (p.matches.length ? p.matches.join(', ') : '(no match)')))));
-  } else if (!out.matches.length) box.appendChild(el('p', {}, 'No observed command matches ' + out.pattern + '.'));
-  else box.appendChild(el('ul', { class: 'plain mono' }, out.matches.map((m) => el('li', {}, m))));
-}));
-
-// ---- containment -------------------------------------------------------------------------
-
-function renderPlans(r) {
-  const box = clear($('plans'));
-  for (const key of ['A', 'B']) {
-    const p = r.containment[key];
-    const body = [
-      el('h2', {}, el('span', {}, 'Scenario ' + key), el('span', { class: 'tag ' + (p.feasible && p.verified ? 'ok' : 'bad') },
-        p.feasible ? (p.verified ? 'verified: targets unreachable' : 'NOT verified') : 'infeasible')),
-      el('p', { class: 'muted small' }, p.label),
-    ];
-    if (p.feasible) {
-      body.push(el('div', { class: 'cost' }, p.totalCost, el('span', { class: 'muted small' }, '  total cost')));
-      body.push(p.actions.length ? el('ul', {}, p.actions.map((a) => el('li', {}, a.description + ' (cost ' + a.cost + ')')))
-        : el('p', {}, 'Nothing to cut: no target is reachable.'));
-    } else body.push(el('p', {}, p.message));
-    body.push(el('p', { class: 'muted small' }, p.algorithm + ', ' + fmt(p.millis, 3) + ' ms'));
-    box.appendChild(el('div', { class: 'card plan' }, body));
-  }
-}
-$('scenarioPick').addEventListener('change', () => drawMap($('mapCut'), state.result, riskByHost(state.result), $('scenarioPick').value));
-
-function renderLinks(r) {
-  const rows = r.links.map((l) => {
-    const input = el('input', { type: 'number', min: 0, max: 1000000, value: l.cost, 'aria-label': 'Cost of ' + l.from + ' to ' + l.to });
-    const set = (v) => guard(async () => {
-      state.result = await put('/api/links/' + l.index, { cost: Number(v()) });
-      state.whatIf = null;
-      renderResult();
-    });
-    return el('tr', {},
-      el('td', {}, l.from + (l.bidirectional ? ' <-> ' : ' -> ') + l.to),
-      el('td', {}, input),
-      el('td', {}, l.neverCut ? el('span', { class: 'tag' }, 'never cut') : ''),
-      el('td', {}, el('button', { type: 'button', onclick: set(() => input.value) }, 'Set'),
-        ' ', el('button', { type: 'button', onclick: set(() => 1000000) }, 'Never cut')));
-  });
-  const table = el('table', {}, el('thead', {}, el('tr', {}, ...['Link', 'Cost', '', ''].map((t) => el('th', {}, t)))), el('tbody', {}, rows));
-  const box = clear($('linkTable'));
-  if (!rows.length) box.appendChild(el('p', { class: 'muted' }, 'This network has no links.'));
-  else box.appendChild(el('div', { class: 'tablewrap' }, table));
-  if (r.costChanges.length) box.appendChild(el('p', { class: 'small' }, 'Edited this session: ' + r.costChanges.join('; ')));
-}
-$('resetLinks').addEventListener('click', guard(async () => {
-  state.result = await post('/api/links/reset');
-  state.whatIf = null;
-  renderResult();
-}));
-
-// ---- network map -------------------------------------------------------------------------
-
-/* Layout only: columns by hop distance from the compromised hosts. */
-function drawMap(box, r, risk, scenario) {
-  const hosts = state.topo.hosts.map((h) => h.name);
-  const adj = new Map(hosts.map((h) => [h, []]));
-  for (const l of r.links) { adj.get(l.from).push(l.to); adj.get(l.to).push(l.from); }
-  const layer = new Map();
-  let queue = r.compromised.slice();
-  queue.forEach((h) => layer.set(h, 0));
-  while (queue.length) {
-    const next = [];
-    for (const h of queue) for (const n of adj.get(h)) if (!layer.has(n)) { layer.set(n, layer.get(h) + 1); next.push(n); }
-    queue = next;
-  }
-  const maxLayer = Math.max(0, ...layer.values());
-  for (const h of hosts) if (!layer.has(h)) layer.set(h, maxLayer + 1);
-  const cols = [];
-  for (const h of hosts) { const c = layer.get(h); (cols[c] = cols[c] || []).push(h); }
-  const W = 900, rowH = 44, colW = (W - 120) / Math.max(1, cols.length - 1 || 1);
-  const H = Math.max(160, Math.max(...cols.map((c) => (c || []).length)) * rowH + 40);
-  const pos = new Map();
-  cols.forEach((c, ci) => (c || []).forEach((h, ri) => pos.set(h, { x: 60 + (cols.length === 1 ? 0 : ci * colW), y: 28 + ri * ((H - 56) / Math.max(1, c.length - 1 || 1)) })));
-  const plan = scenario ? r.containment[scenario] : null;
-  const blocked = new Set(plan ? plan.blockedLinks.map((b) => b.from + '|' + b.to) : []);
-  const isolated = new Set(plan ? plan.isolatedHosts : []);
-  // links that lie on some route from a compromised host to a target
-  const spread = (start, fwd) => {
-    const seen = new Set(start), q = start.slice();
-    while (q.length) {
-      const u = q.shift();
-      for (const l of r.links) {
-        const nx = fwd ? (l.from === u ? l.to : (l.bidirectional && l.to === u ? l.from : null))
-                       : (l.to === u ? l.from : (l.bidirectional && l.from === u ? l.to : null));
-        if (nx !== null && !seen.has(nx)) { seen.add(nx); q.push(nx); }
-      }
-    }
-    return seen;
-  };
-  const fromSrc = spread(r.compromised, true), toTgt = spread(r.targets, false);
-  const onRoute = (l) => (fromSrc.has(l.from) && toTgt.has(l.to)) || (l.bidirectional && fromSrc.has(l.to) && toTgt.has(l.from));
   const svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Network map' });
   for (const l of r.links) {
     const a = pos.get(l.from), b = pos.get(l.to);
     const cut = blocked.has(l.from + '|' + l.to) || blocked.has(l.to + '|' + l.from);
     svg.appendChild(sv('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: cut ? '#20242a' : (onRoute(l) ? '#e6a6a9' : '#aab5c1'), 'stroke-width': cut ? 3 : (onRoute(l) ? 3 : 1.4), 'stroke-dasharray': cut ? '6 4' : '' }));
+  }
+  // what the attacker can still reach once the plan is applied (only for the containment map)
+  const status = new Map();
+  if (plan && plan.feasible) {
+    const linkOpen = (u, v) => r.links.some((l) => (l.from === u && l.to === v) || (l.bidirectional && l.from === v && l.to === u))
+      && !blocked.has(u + '|' + v) && !isolated.has(v);
+    const reach = new Set(r.compromised.filter((h) => !isolated.has(h)));
+    const q = [...reach];
+    while (q.length) {
+      const u = q.shift();
+      for (const h of hosts) if (!reach.has(h) && linkOpen(u, h)) { reach.add(h); q.push(h); }
+    }
+    for (const h of hosts) {
+      if (isolated.has(h)) status.set(h, 'isolated');
+      else if (r.compromised.includes(h)) status.set(h, 'compromised');
+      else if (reach.has(h)) status.set(h, r.targets.includes(h) ? 'TARGET REACHABLE' : 'still reachable');
+      else status.set(h, r.targets.includes(h) ? 'protected' : 'cut off');
+    }
+    const others = hosts.filter((h) => !r.compromised.includes(h));
+    const open = others.filter((h) => reach.has(h));
+    $('cutSummary').textContent = 'After scenario ' + scenario + ': ' + (others.length - open.length) + ' of ' + others.length
+      + ' other hosts are cut off from the attacker, ' + open.length + ' still reachable'
+      + (open.length ? ' (' + open.join(', ') + ')' : '') + '. All protected targets are '
+      + (r.targets.some((t) => reach.has(t)) ? 'NOT all safe.' : 'safe.');
+  } else if (scenario) {
+    $('cutSummary').textContent = plan ? 'No plan is possible for this selection.' : '';
   }
   const color = { Critical: '#a4262c', High: '#c4561f', Medium: '#b88a00', Low: '#9aa6b2' };
   const meta = new Map(state.topo.hosts.map((h) => [h.name, h]));
@@ -567,6 +437,11 @@ function drawMap(box, r, risk, scenario) {
       g.appendChild(sv('line', { x1: p.x - 8, y1: p.y + 8, x2: p.x + 8, y2: p.y - 8, stroke: '#a4262c', 'stroke-width': 3 }));
     }
     g.appendChild(sv('text', { x: p.x, y: p.y - 13, 'text-anchor': 'middle' }, h));
+    if (status.has(h)) {
+      const s = status.get(h);
+      const cls = (s === 'cut off' || s === 'protected') ? 'status-cut' : (s === 'isolated' || s === 'compromised' ? 'status-note' : 'status-open');
+      g.appendChild(sv('text', { x: p.x, y: p.y + 24, 'text-anchor': 'middle', 'font-size': 10, class: cls }, s));
+    }
     svg.appendChild(g);
   }
   clear(box).appendChild(svg);

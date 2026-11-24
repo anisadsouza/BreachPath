@@ -110,6 +110,13 @@ Containment view draws the links the plan blocks as dashed lines. Each plan is t
 independently: the chosen links and hosts are removed and a search confirms that no target can still be
 reached.
 
+After a plan is chosen, the Containment map labels every host as cut off from the attacker, still
+reachable by the attacker, protected target or isolated, and one sentence summarises it (for example "8 of
+11 other hosts are cut off, 3 still reachable"). This shows what the plan does not protect. Next to the
+protected targets there is a "Protect all other systems" choice: it ticks every host that is not
+compromised, so the plan cuts the attacker off from the whole network. To protect one very important
+system first, choose only that system and read the labels to cross-check the others.
+
 Complexity: Edmonds-Karp needs O(V'E') augmentations, where V' = 2n + 2 is the number of nodes of the
 split graph and E' its edges. The flow network is stored as a capacity matrix, so each breadth-first
 search costs O(V'^2) and the total is O(V'^3 E') in the worst case with O(V'^2) space. (With adjacency

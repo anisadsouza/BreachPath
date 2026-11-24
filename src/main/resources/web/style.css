@@ -116,3 +116,6 @@ pre.out { margin: 8px 0 0; white-space: pre-wrap; }
   .two { grid-template-columns: 1fr; }
   input[type="text"] { min-width: 0; width: 100%; }
 }
+
+.link-button { margin-top: 6px; padding: 2px 0; border: 0; background: none; color: #0b4f6c; text-decoration: underline; cursor: pointer; font: inherit; font-size: 0.9em; text-align: left; }
+.status-cut { fill: #2e7d4f; } .status-open { fill: #a4262c; font-weight: 600; } .status-note { fill: #5b6670; }
