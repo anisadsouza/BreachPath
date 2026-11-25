@@ -17,39 +17,44 @@ All data is synthetic. The results are experiments on that data, not proof of re
 </p>
 <p align="center"><em>Overview: choose the compromised host and the systems to protect, then see the risk ranking and the network map.</em></p>
 
-<p align="center">
-  <img src="docs/screenshots/ContainmentA.png" width="820" alt="Containment scenario A">
-</p>
-<p align="center"><em>Containment, scenario A: the infected machines stay online and the plan blocks links. The plan is checked: no protected system can be reached.</em></p>
+<br>
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/ContainmentB.png" width="400" alt="Containment scenario B"><br><sub>Containment, scenario B: infected machines are isolated</sub></td>
-    <td align="center"><img src="docs/screenshots/Investigation.png" width="400" alt="Investigation"><br><sub>Investigation: why an incident has its score</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/What-if.png" width="400" alt="What-if"><br><sub>What-if: each host as the only compromised one</sub></td>
-    <td align="center"><img src="docs/screenshots/UnderTheHood.png" width="400" alt="Under the hood"><br><sub>Under the hood: each data structure on the current data</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/Benchmarks.png" width="400" alt="Benchmarks"><br><sub>Benchmarks: each technique against a plain baseline</sub></td>
-    <td align="center"><img src="docs/screenshots/web-overview.png" width="400" alt="Web overview"><br><sub>Web app: overview with risk cards</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/web-investigation.png" width="400" alt="Web investigation"><br><sub>Web app: investigation and Bloom filter check</sub></td>
-    <td align="center"><img src="docs/screenshots/web-containmentmap.png" width="400" alt="Web containment map"><br><sub>Web app: containment map</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/Web-ContainmentCost.png" width="400" alt="Web containment cost"><br><sub>Web app: containment plan and cost</sub></td>
-    <td align="center"><img src="docs/screenshots/web-whatif.png" width="400" alt="Web what-if"><br><sub>Web app: what-if table</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/web-benchmarks.png" width="400" alt="Web benchmarks"><br><sub>Web app: benchmarks</sub></td>
-    <td align="center"><img src="docs/screenshots/web-data.png" width="400" alt="Web data"><br><sub>Web app: upload and validate your own data</sub></td>
+    <td align="center"><img src="docs/screenshots/ContainmentA.png" width="400" alt="Containment scenario A"><br><b>Containment, scenario A</b><br><sub>Infected machines stay online. The plan blocks links and is checked.</sub></td>
+    <td align="center"><img src="docs/screenshots/ContainmentB.png" width="400" alt="Containment scenario B"><br><b>Containment, scenario B</b><br><sub>Infected machines are isolated. Usually cheaper, also checked.</sub></td>
   </tr>
 </table>
 
-The first six pictures are the JavaFX dashboard, the rest are the web application. All use the sample data.
+<br>
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/Investigation.png" width="400" alt="Investigation"><br><sub>Investigation: why an incident has its score</sub></td>
+    <td align="center"><img src="docs/screenshots/What-if.png" width="400" alt="What-if"><br><sub>What-if: each host as the only compromised one</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/UnderTheHood.png" width="400" alt="Under the hood"><br><sub>Under the hood: each data structure on the current data</sub></td>
+    <td align="center"><img src="docs/screenshots/Benchmarks.png" width="400" alt="Benchmarks"><br><sub>Benchmarks: each technique against a plain baseline</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/web-overview.png" width="400" alt="Web overview"><br><sub>Web app: overview with risk cards</sub></td>
+    <td align="center"><img src="docs/screenshots/web-investigation.png" width="400" alt="Web investigation"><br><sub>Web app: investigation and Bloom filter check</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/web-containmentmap.png" width="400" alt="Web containment map"><br><sub>Web app: containment map</sub></td>
+    <td align="center"><img src="docs/screenshots/Web-ContainmentCost.png" width="400" alt="Web containment cost"><br><sub>Web app: containment plan and cost</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/web-whatif.png" width="400" alt="Web what-if"><br><sub>Web app: what-if table</sub></td>
+    <td align="center"><img src="docs/screenshots/web-benchmarks.png" width="400" alt="Web benchmarks"><br><sub>Web app: benchmarks</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><img src="docs/screenshots/web-data.png" width="400" alt="Web data"><br><sub>Web app: upload and validate your own data</sub></td>
+  </tr>
+</table>
+
+The first group is the JavaFX dashboard (Overview, both containment scenarios, Investigation, What-if, Under the hood, Benchmarks). The second group is the web application. All use the sample data.
 
 ## What it does
 
@@ -84,40 +89,37 @@ implemented in this repository; the JDK collections are used only for plumbing a
 | Segment tree | 3 | `segmenttree/`, `engine/EventTimeline` | alert totals and peaks over time windows |
 | Red-black tree | 3 | `rbtree/`, `engine/IncidentIndex` | incidents ordered by (riskScore, incidentId) |
 
-How they fit together: the segment tree turns the alert log into window totals and peaks. The
-Bloom filter screens each indicator in the log; only "possibly present" answers reach the trie,
-which confirms them exactly, and the tries also match command patterns. The risk scorer combines
-those findings and keeps each host's incident in the red-black tree, so the highest-risk case is
-always at hand and re-scoring is cheap. Randomized Quickselect reads the score distribution
-without sorting it. The flow engine then calculates containment options from the isolation and
-link costs in the data.
+How they fit together:
+
+1. The segment tree turns the alert log into window totals and peaks.
+2. The Bloom filter screens each indicator. Only "possibly present" answers reach the trie, which confirms them exactly. The tries also match command patterns.
+3. The risk scorer combines these findings and keeps each host's incident in the red-black tree, so the highest risk is always at hand.
+4. Randomized Quickselect reads the score distribution without sorting it.
+5. The flow engine calculates containment from the isolation and link costs in the data.
 
 ### Bloom filter (probabilistic component)
 
-The filter holds every exact indicator. Sizing follows the standard formulas: for n indicators and
-a target false-positive rate p (1%), it uses m = -n ln p / (ln 2)^2 bits and k = (m / n) ln 2 hash
-functions, derived from two 64-bit hashes by double hashing.
+The filter holds every exact indicator. It is sized for a 1% false-positive rate (about 10 bits per indicator, m = -n ln p / (ln 2)^2 bits and k = (m / n) ln 2 hash functions, from two 64-bit hashes by double hashing).
 
-- "Definitely absent" is certain: the filter has no false negatives.
-- "Possibly present" is never trusted on its own. The trie always confirms it, so a false positive
-  cannot flag a clean indicator. The answers of the engine are identical to a trie-only engine,
-  which the tests check on 20,000 random probes.
-- Prefix rules (`203.0.113.*`) are matched by the prefix trie, because a Bloom filter cannot answer
-  prefix questions.
-- Honest limit: against an in-memory trie the filter saves little or no time, because a miss in a
-  trie is already cheap (see the benchmark conclusion). It pays off when the authoritative check is
-  expensive, such as a database or remote feed, since about half of the lookups in the benchmark
-  never reach it. The filter needs about 10 bits per indicator.
+| Answer | Meaning |
+|---|---|
+| Definitely absent | Certain. The filter has no false negatives. |
+| Possibly present | Never trusted alone. The exact trie always confirms it, so a false positive cannot flag a clean indicator. |
+
+- Results are identical to a trie-only engine (checked by the tests on 20,000 random probes).
+- Prefix rules (`203.0.113.*`) are matched by the prefix trie, because a Bloom filter cannot answer prefix questions.
+- Limit: against an in-memory trie it saves little or no time. It pays off when the exact check is expensive (a database or remote feed). In the benchmark about half of the lookups never reach the trie.
 
 ### Randomized Quickselect
 
-Finds the k-th smallest value by partitioning around a random pivot and following only the side
-that holds the target rank. Expected O(n) comparisons for any input (the random pivot, not the
-data, decides the running time), against O(n log n) for sorting. It uses a three-way partition, so
-many equal scores do not slow it down. It does not modify its input. The dashboard uses a fixed
-seed, so the same data always gives the same numbers. The result shows the number of comparisons
-used. It is the right tool for one or a few percentiles; for many queries on the same data, sort
-once.
+Finds the k-th smallest value without sorting.
+
+- **How:** partition around a random pivot, then follow only the side that holds the wanted rank.
+- **Speed:** expected O(n) comparisons for any input, against O(n log n) for sorting.
+- **Equal scores:** a three-way partition keeps many equal values from slowing it down.
+- **Safe:** it does not modify its input.
+- **Repeatable:** the dashboard uses a fixed seed, so the same data gives the same numbers. The result shows the comparisons used.
+- **When to use:** one or a few percentiles. For many queries on the same data, sort once.
 
 ### Risk score
 
@@ -137,31 +139,36 @@ Priority labels: 80 and above is Critical, 60 to 79 High, 30 to 59 Medium, below
 
 ### Containment
 
-Each host is split into an "in" and an "out" node, joined by an edge whose capacity is the cost of
-isolating that host. A link becomes an edge whose capacity is the cost of blocking it. A cut
-through a host edge means "isolate this host", and a cut through a link edge means "block this
-link". Targets can never be isolated. A cost means how disruptive it is to cut that host or link, so
-the plan is the cheapest total disruption. A link cost of 1,000,000 (the `INF` constant in
-`ContainmentPlanner`) marks a link that must never be cut. If an uncuttable path reaches a target,
-the plan reports that no finite-cost containment exists.
+**How the plan is built**
 
-The plan cuts every route from the compromised hosts to the targets, not only the shortest one. The
-network map draws the shortest routes in dark red and all other possible routes in pink; the
-Containment view draws the links the plan blocks as dashed lines. Each plan is then checked
-independently: the chosen links and hosts are removed and a search confirms that no target can still be
-reached.
+| Part of the network | In the flow graph | Meaning of a cut |
+|---|---|---|
+| A host | An "in" node and an "out" node joined by an edge, capacity = cost of isolating it | Isolate this host |
+| A link | An edge, capacity = cost of blocking it | Block this link |
+| A target | Cannot be isolated | Never cut |
+| A link that must never be cut | Capacity 1,000,000 (`INF` in `ContainmentPlanner`) | If it reaches a target, the plan reports that no finite-cost containment exists |
 
-After a plan is chosen, the Containment map labels every host as cut off from the attacker, still
-reachable by the attacker, protected target or isolated, and one sentence summarises it (for example "8 of
-11 other hosts are cut off, 3 still reachable"). This shows what the plan does not protect. Next to the
-protected targets there is a "Protect all other systems" choice: it ticks every host that is not
-compromised, so the plan cuts the attacker off from the whole network. To protect one very important
-system first, choose only that system and read the labels to cross-check the others.
+A cost means how disruptive it is to cut that host or link, so the plan is the cheapest total disruption.
 
-Complexity: Edmonds-Karp needs O(V'E') augmentations, where V' = 2n + 2 is the number of nodes of the
-split graph and E' its edges. The flow network is stored as a capacity matrix, so each breadth-first
-search costs O(V'^2) and the total is O(V'^3 E') in the worst case with O(V'^2) space. (With adjacency
-lists the textbook bound is O(V E^2).) This is why a network is limited to 500 assets.
+**What the screens show**
+
+- The plan cuts every route to the targets, not only the shortest one.
+- The map draws the shortest routes in dark red and all other possible routes in pink. Blocked links are dashed.
+- Each plan is checked independently: the chosen links and hosts are removed and a search confirms no target can be reached.
+- Every host is labelled cut off, still reachable, protected target or isolated, with a one-line summary (for example "8 of 11 other hosts are cut off, 3 still reachable"). This shows what the plan does not protect.
+- "Protect all other systems" ticks every host that is not compromised, so the whole network is protected.
+- To protect one very important system first, choose only that system and read the labels to cross-check the others.
+
+**Complexity**
+
+| Item | Value |
+|---|---|
+| Graph size | V' = 2n + 2 nodes, E' edges |
+| Augmentations | O(V'E') |
+| Storage | capacity matrix, so each search costs O(V'^2) |
+| Total | O(V'^3 E') worst case, O(V'^2) space |
+| Textbook bound (adjacency lists) | O(V E^2) |
+| Limit | 500 assets |
 
 ## Inputs, outputs, constraints and failure cases
 
