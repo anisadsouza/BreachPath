@@ -12,6 +12,12 @@ All data is synthetic. The results are experiments on that data, not proof of re
 
 ## Screenshots
 
+All screenshots use the sample data (WS-Alice compromised). There are two front ends on the same Java engines.
+
+### 1. Desktop dashboard (JavaFX)
+
+A desktop window with seven pages. It calls the Java engines directly, with no server. Run it with `mvn javafx:run`.
+
 <p align="center">
   <img src="docs/screenshots/Overview.png" width="820" alt="Overview">
 </p>
@@ -37,24 +43,31 @@ All data is synthetic. The results are experiments on that data, not proof of re
     <td align="center"><img src="docs/screenshots/UnderTheHood.png" width="400" alt="Under the hood"><br><sub>Under the hood: each data structure on the current data</sub></td>
     <td align="center"><img src="docs/screenshots/Benchmarks.png" width="400" alt="Benchmarks"><br><sub>Benchmarks: each technique against a plain baseline</sub></td>
   </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/web-overview.png" width="400" alt="Web overview"><br><sub>Web app: overview with risk cards</sub></td>
-    <td align="center"><img src="docs/screenshots/web-investigation.png" width="400" alt="Web investigation"><br><sub>Web app: investigation and Bloom filter check</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/web-containmentmap.png" width="400" alt="Web containment map"><br><sub>Web app: containment map</sub></td>
-    <td align="center"><img src="docs/screenshots/Web-ContainmentCost.png" width="400" alt="Web containment cost"><br><sub>Web app: containment plan and cost</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/web-whatif.png" width="400" alt="Web what-if"><br><sub>Web app: what-if table</sub></td>
-    <td align="center"><img src="docs/screenshots/web-benchmarks.png" width="400" alt="Web benchmarks"><br><sub>Web app: benchmarks</sub></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2"><img src="docs/screenshots/web-data.png" width="400" alt="Web data"><br><sub>Web app: upload and validate your own data</sub></td>
-  </tr>
 </table>
 
-The first group is the JavaFX dashboard (Overview, both containment scenarios, Investigation, What-if, Under the hood, Benchmarks). The second group is the web application. All use the sample data.
+<br>
+
+### 2. Web application (browser front end and Java REST API backend)
+
+A browser front end that calls the Java REST API (`ApiServer`, `BreachPathService`). All algorithms run in the Java backend. Run it with `java -cp target/breachpath-1.0.jar com.breachpath.web.WebApp` and open http://127.0.0.1:8080/. It also has a Data tab for uploading your own files.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/web-overview.png" width="400" alt="Web overview"><br><sub>Overview: risk cards, incident list, network map</sub></td>
+    <td align="center"><img src="docs/screenshots/web-investigation.png" width="400" alt="Web investigation"><br><sub>Investigation: incident explanation and Bloom filter check</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/web-containmentmap.png" width="400" alt="Web containment map"><br><sub>Containment: the map after the plan</sub></td>
+    <td align="center"><img src="docs/screenshots/Web-ContainmentCost.png" width="400" alt="Web containment cost"><br><sub>Containment: actions and cost</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/web-whatif.png" width="400" alt="Web what-if"><br><sub>What-if table</sub></td>
+    <td align="center"><img src="docs/screenshots/web-benchmarks.png" width="400" alt="Web benchmarks"><br><sub>Benchmarks</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><img src="docs/screenshots/web-data.png" width="400" alt="Web data"><br><sub>Data tab: upload and validate your own files</sub></td>
+  </tr>
+</table>
 
 ## What it does
 
