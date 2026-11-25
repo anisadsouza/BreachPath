@@ -10,6 +10,47 @@ dashboard.
 
 All data is synthetic. The results are experiments on that data, not proof of real-world protection.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/Overview.png" width="820" alt="Overview">
+</p>
+<p align="center"><em>Overview: choose the compromised host and the systems to protect, then see the risk ranking and the network map.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/ContainmentA.png" width="820" alt="Containment scenario A">
+</p>
+<p align="center"><em>Containment, scenario A: the infected machines stay online and the plan blocks links. The plan is checked: no protected system can be reached.</em></p>
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/ContainmentB.png" width="400" alt="Containment scenario B"><br><sub>Containment, scenario B: infected machines are isolated</sub></td>
+    <td align="center"><img src="docs/screenshots/Investigation.png" width="400" alt="Investigation"><br><sub>Investigation: why an incident has its score</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/What-if.png" width="400" alt="What-if"><br><sub>What-if: each host as the only compromised one</sub></td>
+    <td align="center"><img src="docs/screenshots/UnderTheHood.png" width="400" alt="Under the hood"><br><sub>Under the hood: each data structure on the current data</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/Benchmarks.png" width="400" alt="Benchmarks"><br><sub>Benchmarks: each technique against a plain baseline</sub></td>
+    <td align="center"><img src="docs/screenshots/web-overview.png" width="400" alt="Web overview"><br><sub>Web app: overview with risk cards</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/web-investigation.png" width="400" alt="Web investigation"><br><sub>Web app: investigation and Bloom filter check</sub></td>
+    <td align="center"><img src="docs/screenshots/web-containmentmap.png" width="400" alt="Web containment map"><br><sub>Web app: containment map</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/Web-ContainmentCost.png" width="400" alt="Web containment cost"><br><sub>Web app: containment plan and cost</sub></td>
+    <td align="center"><img src="docs/screenshots/web-whatif.png" width="400" alt="Web what-if"><br><sub>Web app: what-if table</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/web-benchmarks.png" width="400" alt="Web benchmarks"><br><sub>Web app: benchmarks</sub></td>
+    <td align="center"><img src="docs/screenshots/web-data.png" width="400" alt="Web data"><br><sub>Web app: upload and validate your own data</sub></td>
+  </tr>
+</table>
+
+The first six pictures are the JavaFX dashboard, the rest are the web application. All use the sample data.
+
 ## What it does
 
 1. Loads a network of hosts and links, a log of hourly alert counts, known indicators of compromise
@@ -372,55 +413,7 @@ Saved outputs of one full run (console report, benchmarks, test results) are kep
     java -jar target/breachpath-1.0.jar data WS-Alice DB-PROD benchmark > docs/demo/benchmark_output.txt
     mvn test > docs/demo/test_output.txt
 
-### Screenshots
-
-Desktop dashboard (JavaFX), sample data, WS-Alice compromised.
-
-**Overview.** Pick the compromised hosts, protected targets and hour window. The map shows how many steps each host is from the breach, the list ranks incidents by risk, and the chart shows alerts per hour.
-
-![Overview](docs/screenshots/Overview.png)
-
-**Investigation.** Shows why an incident has its score, factor by factor. Evidence can be added to an hour, which re-scores the incident. Includes the wildcard command search and the indicator search.
-
-![Investigation](docs/screenshots/Investigation.png)
-
-**Containment, scenario A.** The compromised hosts stay online. The plan blocks links (dashed with a cross) and is verified: no protected target can be reached after the cut.
-
-![Containment scenario A](docs/screenshots/ContainmentA.png)
-
-**Containment, scenario B.** The compromised hosts may be isolated. This is usually cheaper, and it is verified in the same way.
-
-![Containment scenario B](docs/screenshots/ContainmentB.png)
-
-**What-if.** Each other host is treated in turn as the only compromised one, with its exposure, steps to the target and containment cost under both scenarios.
-
-![What-if](docs/screenshots/What-if.png)
-
-**Under the hood.** Shows the data structures working on the current data: max flow equals the cut cost, the segment tree, prefix trie, wildcard dictionary, red-black tree, Bloom filter and Quickselect.
-
-![Under the hood](docs/screenshots/UnderTheHood.png)
-
-**Benchmarks.** Each technique is run against a plain baseline on generated data and checked for the same answer.
-
-![Benchmarks](docs/screenshots/Benchmarks.png)
-
-Web application (browser and REST API).
-
-**Web overview.** Risk cards with median and 90th percentile (Quickselect), both containment costs, the ranked incident list and the network map.
-
-![Web overview](docs/screenshots/web-overview.png)
-
-**Web investigation.** Incident explanation, alerts per hour, Bloom filter indicator screening, prefix search and wildcard hunt.
-
-![Web investigation](docs/screenshots/web-investigation.png)
-
-**Web what-if.** The same what-if table in the browser.
-
-![Web what-if](docs/screenshots/web-whatif.png)
-
-**Web data.** Upload your own files. Everything is validated first, and an invalid file leaves the current data unchanged.
-
-![Web data](docs/screenshots/web-data.png)
+Screenshots of every page are at the top of this file and in `docs/screenshots/`.
 
 ## Fonts
 
