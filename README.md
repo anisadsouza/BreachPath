@@ -332,7 +332,7 @@ costly, not when it is an in-memory lookup.
     BreachPath/
     ├── pom.xml
     ├── data/                  assets, links, alert log, IOCs, patterns
-    ├── docs/screenshots/      screenshots of the web application
+    ├── docs/screenshots/      screenshots of the dashboard and web application
     ├── docs/demo/             saved console, benchmark and test output
     ├── src/main/java/com/breachpath/
     │   ├── model/             Asset, Link, Topology, SecurityEvent, Incident
@@ -374,10 +374,53 @@ Saved outputs of one full run (console report, benchmarks, test results) are kep
 
 ### Screenshots
 
-![Overview](docs/screenshots/overview.png)
-![Investigation](docs/screenshots/investigation.png)
-![Containment](docs/screenshots/containment.png)
-![Benchmarks](docs/screenshots/benchmarks.png)
+Desktop dashboard (JavaFX), sample data, WS-Alice compromised.
+
+**Overview.** Pick the compromised hosts, protected targets and hour window. The map shows how many steps each host is from the breach, the list ranks incidents by risk, and the chart shows alerts per hour.
+
+![Overview](docs/screenshots/Overview.png)
+
+**Investigation.** Shows why an incident has its score, factor by factor. Evidence can be added to an hour, which re-scores the incident. Includes the wildcard command search and the indicator search.
+
+![Investigation](docs/screenshots/Investigation.png)
+
+**Containment, scenario A.** The compromised hosts stay online. The plan blocks links (dashed with a cross) and is verified: no protected target can be reached after the cut.
+
+![Containment scenario A](docs/screenshots/ContainmentA.png)
+
+**Containment, scenario B.** The compromised hosts may be isolated. This is usually cheaper, and it is verified in the same way.
+
+![Containment scenario B](docs/screenshots/ContainmentB.png)
+
+**What-if.** Each other host is treated in turn as the only compromised one, with its exposure, steps to the target and containment cost under both scenarios.
+
+![What-if](docs/screenshots/What-if.png)
+
+**Under the hood.** Shows the data structures working on the current data: max flow equals the cut cost, the segment tree, prefix trie, wildcard dictionary, red-black tree, Bloom filter and Quickselect.
+
+![Under the hood](docs/screenshots/UnderTheHood.png)
+
+**Benchmarks.** Each technique is run against a plain baseline on generated data and checked for the same answer.
+
+![Benchmarks](docs/screenshots/Benchmarks.png)
+
+Web application (browser and REST API).
+
+**Web overview.** Risk cards with median and 90th percentile (Quickselect), both containment costs, the ranked incident list and the network map.
+
+![Web overview](docs/screenshots/web-overview.png)
+
+**Web investigation.** Incident explanation, alerts per hour, Bloom filter indicator screening, prefix search and wildcard hunt.
+
+![Web investigation](docs/screenshots/web-investigation.png)
+
+**Web what-if.** The same what-if table in the browser.
+
+![Web what-if](docs/screenshots/web-whatif.png)
+
+**Web data.** Upload your own files. Everything is validated first, and an invalid file leaves the current data unchanged.
+
+![Web data](docs/screenshots/web-data.png)
 
 ## Fonts
 
