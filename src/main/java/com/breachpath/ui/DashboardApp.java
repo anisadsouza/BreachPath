@@ -154,6 +154,9 @@ public final class DashboardApp extends Application {
     private final TextField trieField = new TextField("update");
     private final HBox trieChips = new HBox(8);
     private final Label trieResult = new Label();
+    private final TextField bloomField = new TextField("update-cdn.evil-domain.com");
+    private final Label bloomResult = new Label();
+    private final Label quickResult = new Label();
     private final TextField wildField = new TextField("p.wershell");
     private final Label wildResult = new Label();
     private final VBox segBody = new VBox(4);
@@ -1239,8 +1242,24 @@ public final class DashboardApp extends Application {
                         + "not risk levels; the number in each node is the risk score.",
                 rbHolder, rbSummary);
 
-        VBox leftColumn = new VBox(14, flow, trie, wild);
-        VBox rightColumn = new VBox(14, seg, rb);
+        // 6. Bloom filter in front of the exact trie
+        bloomField.setPromptText("Type a full indicator");
+        bloomField.textProperty().addListener((o, a, b) -> updateBloom());
+        bloomResult.setWrapText(true);
+        bloomResult.setMinHeight(Region.USE_PREF_SIZE);
+        VBox bloom = panel("Bloom filter",
+                "A fast first check: it says definitely not known or possibly known. Only a possible hit goes on to the exact trie.",
+                bloomField, bloomResult);
+
+        // 7. randomized quickselect
+        quickResult.setWrapText(true);
+        quickResult.setMinHeight(Region.USE_PREF_SIZE);
+        VBox quick = panel("Randomized Quickselect",
+                "Finds the median and percentiles of the risk scores without sorting them.",
+                quickResult);
+
+        VBox leftColumn = new VBox(14, flow, trie, wild, bloom);
+        VBox rightColumn = new VBox(14, seg, rb, quick);
         HBox columns = new HBox(14, leftColumn, rightColumn);
         HBox.setHgrow(leftColumn, Priority.ALWAYS);
         HBox.setHgrow(rightColumn, Priority.ALWAYS);
@@ -1270,8 +1289,47 @@ public final class DashboardApp extends Application {
         updateFlowPanel();
         updateTrie();
         updateWild();
+        updateBloom();
+        updateQuick();
         updateSegmentPanel();
         drawRedBlackTree();
+    }
+
+    private void updateBloom() {
+        if (model == null || !model.isAnalysed()) {
+            return;
+        }
+        String text = bloomField.getText() == null ? "" : bloomField.getText().trim();
+        var b = model.bloomStats();
+        String head = b.bitSize() + " bits, " + b.hashCount() + " hash functions, " + b.items() + " stored indicators.\n";
+        if (text.isEmpty()) {
+            bloomResult.setText(head + "Type an indicator, for example update-cdn.evil-domain.com or example.org.");
+            return;
+        }
+        var r = model.screenIndicator(text);
+        String verdict;
+        if (!r.bloomPossible()) {
+            verdict = "Bloom filter: definitely not known. The exact trie was not needed.";
+        } else if (r.exactConfirmed()) {
+            verdict = "Bloom filter: possibly known. Exact trie: confirmed, this is a known indicator.";
+        } else {
+            verdict = "Bloom filter: possibly known. Exact trie: not found, so this was a false alarm.";
+        }
+        if (r.prefixRuleMatch()) {
+            verdict += "\nA prefix rule also matches this indicator.";
+        }
+        bloomResult.setText(head + verdict);
+    }
+
+    private void updateQuick() {
+        if (model == null || !model.isAnalysed()) {
+            return;
+        }
+        var q = model.riskStats();
+        quickResult.setText(q.count() == 0 ? "No incidents to rank."
+                : "Risk scores of " + q.count() + " incidents: median " + q.median() + ", 75th percentile " + q.p75()
+                + ", 90th percentile " + q.p90() + ", highest " + q.max() + ".\nFound with " + q.comparisons()
+                + " comparisons, no full sort.");
     }
 
     private void updateFlowPanel() {
